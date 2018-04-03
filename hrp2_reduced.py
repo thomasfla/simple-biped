@@ -2,7 +2,7 @@ import pinocchio as se3
 from pinocchio.robot_wrapper import RobotWrapper
 from pinocchio.utils import *
 from math import pi,sqrt
-
+#~ from IPython import embed
 class Visual:
     '''
     Class representing one 3D mesh of the robot, to be attached to a joint. The class contains:
@@ -17,8 +17,12 @@ class Visual:
         self.placement = placement        # placement of the body wrt joint, i.e. bodyMjoint
     def place(self,display,oMjoint,refresh=True):
         oMbody = oMjoint*self.placement
+        #~ display.applyConfiguration(self.name,
+                                   #~ se3ToXYZQUAT(oMbody) )
+        #Hotfix, my viewer wants the older order
+        x,y,z,a,b,c,d = se3ToXYZQUAT(oMbody)
         display.applyConfiguration(self.name,
-                                   se3ToXYZQUAT(oMbody) )
+                                   [x,y,z,d,a,b,c] )
         if refresh: display.refresh()
 
 class Hrp2Reduced:
@@ -27,17 +31,19 @@ class Hrp2Reduced:
     Init from the urdf model of HRP-2.
     Display with robot.display. Initial configuration set to self.q0.
     '''
-    def __init__(self,urdf,pkgs,loadModel=True):
+    def __init__(self,urdf,pkgs,loadModel=True,useViewer=True):
         '''Typical call with Hrp2Reduced('..../hrp2.udf',['dir/with/mesh/files']).'''
+        self.useViewer = useViewer
         self.loadHRP(urdf,pkgs,loadModel)
         self.buildModel()
-
     def loadHRP(self,urdf,pkgs,loadModel):
         '''Internal: load HRP-2 model from URDF.'''
         robot = RobotWrapper( urdf, pkgs, root_joint=se3.JointModelFreeFlyer() )
-        robot.initDisplay( loadModel = loadModel)
-        if 'viewer' not in robot.__dict__: robot.initDisplay()
-        for n in robot.visual_model.geometryObjects: robot.viewer.gui.setVisibility(robot.viewerNodeNames(n),'OFF')
+        useViewer = self.useViewer
+        if useViewer:
+            robot.initDisplay( loadModel = loadModel)
+            if 'viewer' not in robot.__dict__: robot.initDisplay()
+            for n in robot.visual_model.geometryObjects: robot.viewer.gui.setVisibility(robot.viewerNodeNames(n),'ON')
 
         robot.q0 = np.matrix( [
                 0., 0., 0.648702, 0., 0. , 0., 1.,               # Free flyer
@@ -68,7 +74,8 @@ class Hrp2Reduced:
         RANKLE_ID = 31
         LANKLE_ID = 25
 
-        self.viewer  = viewer   = robot.viewer.gui
+        if self.useViewer:
+            self.viewer  = viewer   = robot.viewer.gui
         self.model   = modelred = se3.Model.BuildEmptyModel()
         self.visuals = visuals  = []
 
@@ -89,7 +96,8 @@ class Hrp2Reduced:
         jointName,bodyName = [name+"_joint",name+"_body"]
         jointId = modelred.addJoint(jointId,JointModel(),placement,jointName)
         modelred.appendBodyToJoint(jointId,inertia,se3.SE3.Identity())
-        viewer.addSphere('world/red'+bodyName, 0.05,colorwhite)
+        if self.useViewer:
+            viewer.addSphere('world/red'+bodyName, 0.05,colorwhite)
         visuals.append( Visual('world/red'+bodyName,jointId,se3.SE3.Identity()) )
 
         # Add right hip joint
@@ -103,7 +111,8 @@ class Hrp2Reduced:
         jointName,bodyName = [name+"_joint",name+"_body"]
         jointId = modelred.addJoint(jointId,JointModel(),placement,jointName)
         modelred.appendBodyToJoint(jointId,inertia,se3.SE3.Identity())
-        viewer.addSphere('world/red'+bodyName, 0.05,colorred)
+        if self.useViewer:
+            viewer.addSphere('world/red'+bodyName, 0.05,colorred)
         visuals.append( Visual('world/red'+bodyName,jointId,se3.SE3.Identity()) )
 
         # Add right knee joint
@@ -118,7 +127,8 @@ class Hrp2Reduced:
         jointId = modelred.addJoint(jointId,JointModel(),placement,jointName)
         modelred.appendBodyToJoint(jointId,inertia,se3.SE3.Identity())
         #viewer.addSphere('world/red'+bodyName, 0.05,colorred)
-        viewer.addBox('world/red'+bodyName, 0.05,0.05,0.05,colorred)
+        if self.useViewer:
+            viewer.addBox('world/red'+bodyName, 0.05,0.05,0.05,colorred)
         visuals.append( Visual('world/red'+bodyName,jointId,se3.SE3.Identity()) )
 
         # Add right ankle spot
@@ -128,9 +138,11 @@ class Hrp2Reduced:
         placement.rotation = rotate('y',0)
 
         modelred.addFrame(se3.Frame(name,jointId,0,placement,se3.FrameType.OP_FRAME))
-        viewer.addSphere('world/red'+name, 0.05,colorred)
+        if self.useViewer:
+            viewer.addSphere('world/red'+name, 0.05,colorred)
         visuals.append( Visual('world/red'+name,jointId,placement*se3.SE3(eye(3),np.matrix([0,0,.05]).T)) )
-        viewer.addBox('world/red'+name+'sole', 0.15,.06,.01,colorred)
+        if self.useViewer:
+            viewer.addBox('world/red'+name+'sole', 0.15,.06,.01,colorred)
         visuals.append( Visual('world/red'+name+'sole',jointId,placement) )
 
         # Add left hip
@@ -144,7 +156,8 @@ class Hrp2Reduced:
         jointName,bodyName = [name+"_joint",name+"_body"]
         jointId = modelred.addJoint(1,JointModel(),placement,jointName)
         modelred.appendBodyToJoint(jointId,inertia,se3.SE3.Identity())
-        viewer.addSphere('world/red'+bodyName, 0.05,colorblue)
+        if self.useViewer:
+            viewer.addSphere('world/red'+bodyName, 0.05,colorblue)
         visuals.append( Visual('world/red'+bodyName,jointId,se3.SE3.Identity()) )
 
         # Add left knee
@@ -159,7 +172,8 @@ class Hrp2Reduced:
         jointId = modelred.addJoint(jointId,JointModel(),placement,jointName)
         modelred.appendBodyToJoint(jointId,inertia,se3.SE3.Identity())
         #viewer.addSphere('world/red'+bodyName, 0.05,colorblue)
-        viewer.addBox('world/red'+bodyName, 0.05,0.05,0.05,colorblue)
+        if self.useViewer:
+            viewer.addBox('world/red'+bodyName, 0.05,0.05,0.05,colorblue)
         visuals.append( Visual('world/red'+bodyName,jointId,se3.SE3.Identity()) )
 
         # Add left ankle spot
@@ -169,9 +183,11 @@ class Hrp2Reduced:
         placement.rotation = rotate('y',0)
 
         modelred.addFrame(se3.Frame(name,jointId,0,placement,se3.FrameType.OP_FRAME))
-        viewer.addSphere('world/red'+name, 0.05,colorblue)
+        if self.useViewer:
+            viewer.addSphere('world/red'+name, 0.05,colorblue)
         visuals.append( Visual('world/red'+name,jointId,placement*se3.SE3(eye(3),np.matrix([0,0,.05]).T)) )
-        viewer.addBox('world/red'+name+'sole', 0.15,.06,.01,colorblue)
+        if self.useViewer:
+            viewer.addBox('world/red'+name+'sole', 0.15,.06,.01,colorblue)
         visuals.append( Visual('world/red'+name+'sole',jointId,placement) )
 
         self.data = modelred.createData()
@@ -179,14 +195,24 @@ class Hrp2Reduced:
 
     def display(self,q):
         se3.forwardKinematics(self.model,self.data,q)
-        for visual in self.visuals:
-            visual.place( self.viewer,self.data.oMi[visual.jointParent] )
-            self.viewer.refresh()
-
+        if self.useViewer:
+            for visual in self.visuals:
+                visual.place( self.viewer,self.data.oMi[visual.jointParent] )
+                self.viewer.refresh()
 
 if __name__ == '__main__':
-    pkg = '/home/nmansard/src/sot_versions/groovy/ros/stacks/hrp2/'
-    urdf = '/home/nmansard/src/pinocchio/pinocchio/models/hrp2014.urdf'
-    robot = Hrp2Reduced(urdf,[pkg])
+    from utils_thomas import restert_viewer_server
+    import time
+    useViewer = True
+    if useViewer: 
+        restert_viewer_server()
+    from path import pkg, urdf 
+    robot = Hrp2Reduced(urdf,[pkg],useViewer=useViewer)
     robot.display(robot.q0)
-    
+    q = robot.q0.copy()
+    for i in range(0,8):
+        for p in np.linspace(0,1,50).tolist()+np.linspace(1,0,50).tolist():
+            q[i]=robot.q0[i]+p
+            robot.display(q)
+            time.sleep(0.01)
+    embed()
