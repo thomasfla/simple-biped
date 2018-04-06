@@ -43,7 +43,6 @@ class Tsid:
         Kp_post, Kd_post = self.Kp_post, self.Kd_post
         Kp_com,  Kd_com  = self.Kp_com,  self.Kd_com
         callback_com = self.callback_com
-        #return quantity can be 'tau' or 'dv' 
         #~ print("\033c") # clear terminal
         # compute and extract quantities *******************************
         se3.computeAllTerms(robot.model,robot.data,q,v)
@@ -56,9 +55,6 @@ class Tsid:
         Jlk = se3.jacobian(robot.model,robot.data,q,LK,True,True)
         Jrk = se3.jacobian(robot.model,robot.data,q,RK,True,True)
 
-        se3.centerOfMass(robot.model,robot.data,q,v,zero(NV))
-        acom = robot.data.acom[0]
-        
         # Formulate contact and dynamic constrains *********************
         #        7    4     4       7  4  4
         # 6   |Jc    0      0 | * [dv,f,tau].T =  |-dJc*dq|
@@ -133,7 +129,6 @@ class Tsid:
         #posture task  *************************************************
 
         Jpost = np.hstack([np.zeros([4,3]),np.eye(4)])
-        #~ Jpost[1,1+3] = Jpost[3,3+3] = 0.27 # this scales the knee effect like a rotational joint
         post_p_ref = robot.q0[4:] #only the actuated part !
         post_v_ref = np.matrix([0,0,0,0]).T
         post_a_ref = np.matrix([0,0,0,0]).T
