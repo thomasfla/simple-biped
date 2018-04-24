@@ -15,7 +15,7 @@ import quadprog
 from tsid import Tsid
 from tsid_flexible_contacts import TsidFlexibleContact
 from path import pkg, urdf 
-useViewer = True
+useViewer = False
 np.set_printoptions(precision=3)
 np.set_printoptions(linewidth=200)
 
@@ -36,7 +36,7 @@ if useViewer:
 #Simulation parameters
 dt  = 1e-4
 ndt = 1
-simulation_time = 4.0
+simulation_time = 0.5
 
 #robot parameters
 tauc = 0*np.array([1.,1.,1.,1.])#coulomb friction
@@ -119,7 +119,7 @@ if FLEXIBLE_CONTROLLER:
     Kj_com = 1.40e+02
     #~ Kp_com,Kd_com,Ka_com,Kj_com = 2.4e+09, 5.0e+07, 3.5e+05, 1.0e+03
     Kp_post = 10
-    w_post  = 1e-2
+    w_post  = 1e-3
     tsid=TsidFlexibleContact(robot,Ky,Kz,w_post,Kp_post,Kp_com, Kd_com, Ka_com, Kj_com)
 else:
     tsid=Tsid(robot,Kp_post,Kp_com)

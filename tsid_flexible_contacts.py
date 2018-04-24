@@ -124,15 +124,15 @@ class TsidFlexibleContact:
         #~ Jpost = np.hstack([np.zeros([4,3]),np.eye(4)])
         Jpost = np.eye(7)
         post_p_ref = robot.q0 #[4:] #only the actuated part !
-        post_v_ref = np.matrix([0,0,0,0,0,0,0]).T
-        post_a_ref = np.matrix([0,0,0,0,0,0,0]).T
-        post_p_err = 0*post_v_ref #redo
+        post_v_ref = np.matrix([0.,0.,0.,0.,0.,0.,0.]).T
+        post_a_ref = np.matrix([0.,0.,0.,0.,0.,0.,0.]).T
+        post_p_err = np.matrix([0.,0.,0.,0.,0.,0.,0.]).T
         
         post_p_err[:2] = q[:2] - post_p_ref[:2] # Y-Z error
         post_p_err[2]  = np.arccos(q[2]) - np.arccos(post_p_ref[2]) # Angular error
         post_p_err[3:] = q[4:] - post_p_ref[4:] # Actuation error
         post_v_err = v - post_v_ref
-
+        #~ embed()
         post_a_des = -Kp_post*post_p_err - Kd_post*post_v_err
 
         z4 = np.matrix(np.zeros([7,4+4]))
