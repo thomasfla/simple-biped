@@ -78,9 +78,9 @@ class Tsid:
         driftRF.linear += np.cross(v_RF.angular.T, v_RF.linear.T).T
         dJcdq = np.vstack([driftLF.vector[1:3],driftRF.vector[1:3]])
 
-        Aec =  np.vstack([ np.hstack([Jc, z1  ,z2])  ,
-                           np.hstack([M ,-Jc.T,-S.T])  ])  # -Jk.T
-        bec = -np.vstack([dJcdq,+h])
+        Aec = np.vstack([ np.hstack([Jc, z1  ,z2])  ,
+                          np.hstack([M ,-Jc.T,-S.T])  ])  # -Jk.T
+        bec = np.vstack([-dJcdq,-h])
         #only contacts
         #~ Ac = np.hstack([Jc, z1  ,z2]) 
         #~ bc = -dJcdq 
@@ -170,7 +170,8 @@ class Tsid:
         tau = np.matrix(y[7+4:] ).T
         #populate results
         self.data.com    = com.A1
-        self.data.comerr = com_p_err.A1
+        self.data.com_p_err = com_p_err.A1
+        self.data.com_v_err = com_v_err.A1
         self.data.comref = com_p_ref.A1
         self.data.lkf    = f[:2].A1
         self.data.rkf    = f[2:].A1

@@ -18,7 +18,6 @@ def ForceDict(force_dict,N):
     res.extend(se3.Force.Zero() if i not in force_dict else force_dict[i] for i in range(N) )
     return res
 
-
 class Simu:
     '''
     Based on a Hrp2Reduced robot model, implement the simulation with spring
@@ -33,6 +32,7 @@ class Simu:
         (i.e. total integration time when calling simu is <dt> seconds).
         <q0> should be an attribute of robot if it is not given.
         '''
+        self.first_iter = True
         self.tauc = np.array([0.0,0.0,0.0,0.0]) # coulomb stiction 
         self.frf = zero(6)
         self.flf = zero(6)
@@ -73,20 +73,56 @@ class Simu:
             robot.viewer.applyConfiguration('world/mrf',se3ToXYZQUAT(self.Mrf0))
             robot.viewer.applyConfiguration('world/mlf',se3ToXYZQUAT(self.Mlf0))
 
-    def step(self,q,vq,tauq,dt = None):
+    def step(self,q,v,tauq,dt = None):
         if dt is None: dt = self.dt
         tauq = tauq.copy()
         robot = self.robot
         NQ,NV,NB,RF,LF,RK,LK = self.NQ,self.NV,self.NB,self.RF,self.LF,self.RK,self.LK
-
-        # --- Simu
-        se3.forwardKinematics(robot.model,robot.data,q,vq)
+        if self.first_iter: 
+            self.compute_f_df_from_q_v(q,v)
+            self.first_iter = False
+        for i in range(3,7):
+            if v[i]<0:
+                tauq[i]+=self.tauc[i-4]
+            elif v[i]>0:
+                tauq[i]-=self.tauc[i-4]
+                
+        #~ dv  = se3.aba(robot.model,robot.data,q,v,tauq,ForceDict(self.forces,NB))
+        #~ #simulazione mano! (Forces are directly in the world frame, and aba wants them in the end effector frame)
+        se3.forwardKinematics(robot.model,robot.data,q,v)
+        se3.computeAllTerms(robot.model,robot.data,q,v)
         se3.framesKinematics(robot.model,robot.data)
+        se3.computeJacobians(robot.model,robot.data,q)
+        M  = robot.data.M        #(7,7)
+        h  = robot.data.nle      #(7,1)
+        Jl,Jr = robot.get_Jl_Jr_world(q)
+        Jc = np.vstack([Jl[1:3],Jr[1:3]])    # (4, 7)
+        S  = np.hstack([np.zeros([4,3]),np.eye(4)]) # (4,7)
+        dv = np.linalg.inv(M)*(tauq-h+Jc.T*self.f) #use last forces
+        #~ print 'SIMULATOR pre integration'
+        #~ embed()
+        v += dv*dt
+        q   = se3.integrate(robot.model,q,v*dt)
+        self.compute_f_df_from_q_v(q,v, False)
+        self.dv = dv
+        #~ print 'SIMULATOR post integration'
+        #~ embed()
+        return q,v
+        
+    def compute_f_df_from_q_v(self,q,v, compute_data = True):
+        '''Compute the contact forces and them derivative via q,v and the elastic model'''
+        robot = self.robot
+        NQ,NV,NB,RF,LF,RK,LK = self.NQ,self.NV,self.NB,self.RF,self.LF,self.RK,self.LK
+        # --- Simu
+        if compute_data :
+            se3.forwardKinematics(robot.model,robot.data,q,v)
+            se3.computeAllTerms(robot.model,robot.data,q,v)
+            se3.framesKinematics(robot.model,robot.data)
+            se3.computeJacobians(robot.model,robot.data,q)
 
         Mrf = self.Mrf0.inverse()*robot.data.oMf[RF]
-        vrf = robot.model.frames[RF].placement.inverse()*robot.data.v[RK]
         Mlf = self.Mlf0.inverse()*robot.data.oMf[LF]
-        vlf = robot.model.frames[LF].placement.inverse()*robot.data.v[LK]
+        vlf,vrf = robot.get_vlf_vrf_world(q,v)
         #extract only the free components (2d robot)
         vlf = np.vstack([vlf.linear[1:],vlf.angular[0]])
         vrf = np.vstack([vrf.linear[1:],vrf.angular[0]])
@@ -95,34 +131,25 @@ class Simu:
 
         frf = self.frf                                                  # Buffer where to store right force
         frf[[1,2,3]] = self.Krf*qrf + self.Brf*vrf                      # Right force in effector frame
-        rf0_frf = se3.Force(frf)                                        # Force in rf0 frame
-        rk_frf  = (robot.data.oMi[RK].inverse()*self.Mrf0).act(rf0_frf) # Spring force in R-knee frame.
+        #~ rf0_frf = se3.Force(frf)                                        # Force in rf0 frame
+        #~ rk_frf  = (robot.data.oMi[RK].inverse()*self.Mrf0).act(rf0_frf) # Spring force in R-knee frame.
         flf = self.flf                                                  # Buffer where to store left force
         flf[[1,2,3]] = self.Klf*qlf + self.Blf*vlf                      # Left force in effector frame
-        lf0_flf = se3.Force(flf)                                        # Force in lf0 frame
-        lk_flf  = (robot.data.oMi[LK].inverse()*self.Mlf0).act(lf0_flf) # Spring force in L-knee frame.
+        #~ lf0_flf = se3.Force(flf)                                        # Force in lf0 frame
+        #~ lk_flf  = (robot.data.oMi[LK].inverse()*self.Mlf0).act(lf0_flf) # Spring force in L-knee frame.
 
-        self.forces = {RK: rk_frf, LK: lk_flf}
-
-        #~ embed()
+        #~ self.forces = {RK: rk_frf, LK: lk_flf}
+        self.vlf = vlf
+        self.vrf = vrf
+        #~ 
+        #~ lkMlf = robot.data.oMi[LK].inverse()*robot.data.oMf[LF]
+        #~ rkMrf = robot.data.oMi[RK].inverse()*robot.data.oMf[RF]
+        #~ f=np.vstack([lkMlf.actInv(self.forces[LK]).linear[1:],
+                     #~ rkMrf.actInv(self.forces[RK]).linear[1:]])
+        self.f=np.vstack([self.flf[1:3],self.frf[1:3]]) #  forces in the world frame
+        self.df=np.vstack([(self.Klf*self.vlf)[0:2],(self.Krf*self.vrf)[0:2]])
+        return self.f,self.df
         
-        #~ tauq[3:][(vq[3:]<0)] += tauc
-        #~ tauq[3:][(vq[3:]>0)] -= tauc
-        for i in range(3,7):
-            if vq[i]<0:
-                tauq[i]+=self.tauc[i-4]
-            elif vq[i]>0:
-                tauq[i]-=self.tauc[i-4]
-
-		#~ embed()
-
-        aq  = se3.aba(robot.model,robot.data,q,vq,tauq,ForceDict(self.forces,NB))
-        vq += aq*dt
-        q   = se3.integrate(robot.model,q,vq*dt)
-
-        self.aq = aq
-        return q,vq
-
     def simu(self,q,v,tau):
         '''Simu performs self.ndt steps each lasting self.dt/self.ndt seconds.'''
         for i in range(self.ndt):
@@ -130,14 +157,12 @@ class Simu:
         robot = self.robot
         NQ,NV,NB,RF,LF,RK,LK = self.NQ,self.NV,self.NB,self.RF,self.LF,self.RK,self.LK
         
-        rkMrf = robot.data.oMi[RK].inverse()*robot.data.oMf[RF]
         lkMlf = robot.data.oMi[LK].inverse()*robot.data.oMf[LF]
+        rkMrf = robot.data.oMi[RK].inverse()*robot.data.oMf[RF]
 
-        f=np.vstack([lkMlf.actInv(self.forces[LK]).linear[1:],
-                     rkMrf.actInv(self.forces[RK]).linear[1:]])
-        #~ f=np.vstack([self.flf[1:3],self.frf[1:3]]) #  Is not the same (because of different point of application when flexibility if playing?)
-        
-        return q,v,f
+        f = self.f
+        df = self.df
+        return q,v,f,df
 
     __call__ = simu
 
@@ -145,7 +170,8 @@ class Simu:
 if __name__ == "__main__":
     '''Simulation using a simple PD controller.'''
     useViewer = True
-    restert_viewer_server()
+    if useViewer:
+        restert_viewer_server()
     from path import pkg, urdf 
     robot = Hrp2Reduced(urdf,[pkg],loadModel=True,useViewer=useViewer)
     robot.display(robot.q0)
@@ -170,20 +196,20 @@ if __name__ == "__main__":
 
     simu = Simu(robot,dt=1e-3,ndt=1)
 
-
+    simu.tauc = 0*np.array([1.0,1.0,1.0,1.0])
     #~ robot.model.gravity.linear=zero(3)
 
-    def loop(q,v,niter,ndt=None,dt=None,tsleep=.9,fdisplay=100):
+    def loop(q,v,niter,ndt=None,dt=None,tsleep=.9,fdisplay=10):
         t0 = time.time()
         if dt  is not None: simu.dt  = dt
         if ndt is not None: simu.ndt = ndt
         robot.display(q)
         for i in range(niter):
-            q,v,f = simu(q,v,control(q,v))
+            q,v,f,df = simu(q,v,control(q,v))
             if not i % fdisplay:
                 robot.display(q)
-                while((time.time()-t0)<(i*simu.dt)):
-                    time.sleep(0.01*simu.dt) # 1% jitter
+                #~ while((time.time()-t0)<(i*simu.dt)):
+                    #~ time.sleep(0.01*simu.dt) # 1% jitter
         print 'Elapsed time = %.2f (simu time=%.2f)' % (time.time()-t0,simu.dt*niter)
         return q,v
 
@@ -191,15 +217,13 @@ if __name__ == "__main__":
     v = zero(simu.NV)
 
     q[0]-=.01
-    q[1]-=.05
+    q[1]-=.1
     v[1]-=.001
     v[0]-=.001
     q0 = q.copy()
     v0 = v.copy()
     
     
-
-    
-    control = ControlPD(10000.)
-    q,v = loop(q,v,int(1/simu.dt))
+    control = ControlPD(20000.)
+    q,v = loop(q,v,int(10/simu.dt))
     embed()
