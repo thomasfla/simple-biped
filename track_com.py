@@ -33,10 +33,15 @@ if useViewer:
                                     0.4620114266872406,
                                     0.4925136864185333])
    
+#Plots
+PLOT_COM_AND_FORCES = True
+PLOT_COM_DERIVATIVES = True   
+PLOT_ANGULAR_MOMENTUM_DERIVATIVES = True   
+   
 #Simulation parameters
-dt  = 1e-4
+dt  = 1e-3
 ndt = 1
-simulation_time = 0.5
+simulation_time = 2.0
 
 #robot parameters
 tauc = 0*np.array([1.,1.,1.,1.])#coulomb friction
@@ -49,7 +54,7 @@ Bspring = -np.diagflat([By,Bz,0.])     # damping of the feet spring
 
 #Controller parameters
 FLEXIBLE_CONTROLLER = True
-DISTURB = False
+DISTURB = True
 fc      = np.inf #cutoff frequency of the Force fiter
 Ktau    = 0.0
 Kp_post = 10
@@ -66,11 +71,16 @@ log_com_p_err = np.zeros([log_size,2])+np.nan #Centrer of mass error
 log_com_v_err = np.zeros([log_size,2])+np.nan #Centrer of mass velocity error
 log_com_a_err = np.zeros([log_size,2])+np.nan #Centrer of mass acceleration error
 log_com_j_err = np.zeros([log_size,2])+np.nan #Centrer of mass jerk error
-log_com_s_des = np.zeros([log_size,2])+np.nan #Centrer of mass jerk error
+log_com_s_des = np.zeros([log_size,2])+np.nan #Desired centrer of mass snap
 log_com_p     = np.zeros([log_size,2])+np.nan #Centrer of mass
 log_com_v     = np.zeros([log_size,2])+np.nan #Centrer of mass velocity
 log_com_a     = np.zeros([log_size,2])+np.nan #Centrer of mass acceleration
 log_com_j     = np.zeros([log_size,2])+np.nan #Centrer of mass jerk
+log_iam       = np.zeros([log_size,1])+np.nan #Integral of the Angular Momentum approximated by the base orientation
+log_am        = np.zeros([log_size,1])+np.nan #Angular Momentum
+log_dam       = np.zeros([log_size,1])+np.nan #Angular Momentum derivative
+log_ddam      = np.zeros([log_size,1])+np.nan #Angular Momentum 2nd derivative
+log_dddam_des = np.zeros([log_size,1])+np.nan #Desired Angular Momentum 3rd derivative
 log_lkf       = np.zeros([log_size,2])+np.nan #left  knee force
 log_rkf       = np.zeros([log_size,2])+np.nan #right knee force
 log_lkf_sensor = np.zeros([log_size,2])+np.nan  #left  knee force from FT/sensor (from deformation)
@@ -93,6 +103,7 @@ log_p_lf     = np.zeros([log_size,2])+np.nan  #left foot position
 log_p_rf     = np.zeros([log_size,2])+np.nan  #right foot position
 log_dv_simu   = np.zeros([log_size,7])+np.nan #dv from simulator
 log_dv_tsid   = np.zeros([log_size,7])+np.nan #dv desired from TSID
+log_robotInertia = np.zeros([log_size,1])+np.nan #robot inertia
 last_vlf = np.matrix([0,0,0]).T;
 last_vrf = np.matrix([0,0,0]).T;
 
@@ -119,7 +130,7 @@ if FLEXIBLE_CONTROLLER:
     Kj_com = 1.40e+02
     #~ Kp_com,Kd_com,Ka_com,Kj_com = 2.4e+09, 5.0e+07, 3.5e+05, 1.0e+03
     Kp_post = 10
-    w_post  = 1e-3
+    w_post  = 0.1
     tsid=TsidFlexibleContact(robot,Ky,Kz,w_post,Kp_post,Kp_com, Kd_com, Ka_com, Kj_com)
 else:
     tsid=Tsid(robot,Kp_post,Kp_com)
@@ -207,6 +218,13 @@ def controller(q,v,f,df):
     log_com_v_err[log_index] = tsid.data.com_v_err
     log_com_p[log_index] = tsid.data.com_p
     log_com_v[log_index] = tsid.data.com_v
+    
+    log_iam[log_index]       = tsid.data.iam
+    log_am[log_index]        = tsid.data.am
+    log_dam[log_index]       = tsid.data.dam
+    log_ddam[log_index]      = tsid.data.ddam
+    log_dddam_des[log_index] = tsid.data.dddam_des
+    
     if FLEXIBLE_CONTROLLER:
         log_com_a_err[log_index] = tsid.data.com_a_err
         log_com_j_err[log_index] = tsid.data.com_j_err
@@ -222,7 +240,7 @@ def controller(q,v,f,df):
     log_dv_tsid[log_index]   = tsid.data.dv.A1
     log_a_lf_des[log_index]  = tsid.data.lf_a_des.A1
     log_a_rf_des[log_index]  = tsid.data.rf_a_des.A1
-    
+    log_robotInertia[log_index] = tsid.data.robotInertia
     #estimate actual torque from contact forces
     tau_est  = compute_torques_from_dv_and_forces(dv,f_filtered)
     tau_ctrl = torque_controller(tau_des,tau_est)
@@ -239,7 +257,7 @@ def torque_controller(tau_des,tau_est):
 def f_disturb_traj(t):
     if DISTURB:
         if (t>0.5 and t<0.8 ):
-            return np.matrix([3.,0.,0.]).T
+            return np.matrix([30.,0.,0.]).T
         #~ if (t>0.9 and t<0.91 ):
             #~ return np.matrix([300.,0.,0.]).T
     return np.matrix([0.,0.,0.]).T
@@ -272,7 +290,7 @@ def compute_torques_from_dv_and_forces(dv,f):
     tau = (M*dv - Jc.T*f + h)[3:]
     return tau
 
-#~ 
+
 tsid.callback_com=com_traj
 #~ tsid.callback_com=com_const
 
@@ -326,52 +344,52 @@ print "looping on TSID"
 control = controller
 q,v = loop(q,v,f,df,log_size)
 
-ax1 = plt.subplot(311)
-infostr = "Infos:"
-infostr += "\n Ktau  = {}".format(Ktau)
-infostr += "\n fc FTfilter = {} Hz".format(fc)
-infostr += "\n Kp_post {}".format(Kp_post)
-infostr += "\n Kp_com {}".format(Kp_com)
-infostr += "\n tauc {}".format(tauc)
-infostr += "\n Ky={} Kz={}".format(Ky,Kz)
-infostr += "\n dt={}ms ndt={}".format(dt*1000,ndt)
+if PLOT_COM_AND_FORCES:
+    ax1 = plt.subplot(311)
+    infostr = "Infos:"
+    infostr += "\n Ktau  = {}".format(Ktau)
+    infostr += "\n fc FTfilter = {} Hz".format(fc)
+    infostr += "\n Kp_post {}".format(Kp_post)
+    infostr += "\n Kp_com {}".format(Kp_com)
+    infostr += "\n tauc {}".format(tauc)
+    infostr += "\n Ky={} Kz={}".format(Ky,Kz)
+    infostr += "\n dt={}ms ndt={}".format(dt*1000,ndt)
+    plt.text(0.1,0.05,infostr,
+            bbox={'facecolor':'white', 'alpha':0.8, 'pad':10})
+    plt.title('com tracking Y')
+    plt.plot(log_t,log_com_p[:,0],    label="com")
+    plt.plot(log_t,log_com_p_err[:,0], label="com error")
+    plt.plot(log_t,log_comref[:,0], label="com ref")
+    plt.legend()
+    plt.subplot(312,sharex=ax1)
+    plt.title('feet forces Y') 
+    plt.plot(log_t,log_lkf_sensor[:,0],label="applied force",color='b')
+    plt.plot(log_t,log_rkf_sensor[:,0],label="applied force",color='r')
+    plt.plot(log_t,log_lkf[:,0], label="force TSID",color='b',linestyle=':')
+    plt.plot(log_t,log_rkf[:,0], label="force TSID",color='r',linestyle=':')
+    plt.legend()
+    plt.subplot(313,sharex=ax1)
+    plt.title('feet forces Z')
+    plt.plot(log_t,log_lkf_sensor[:,1],label="applied force",color='b')
+    plt.plot(log_t,log_rkf_sensor[:,1],label="applied force",color='r')
+    plt.plot(log_t,log_lkf[:,1], label="force TSID",color='b',linestyle=':')
+    plt.plot(log_t,log_rkf[:,1], label="force TSID",color='r',linestyle=':')
+    plt.legend()
 
-plt.text(0.1,0.05,infostr,
-        bbox={'facecolor':'white', 'alpha':0.8, 'pad':10})
-plt.title('com tracking Y')
-plt.plot(log_t,log_com_p[:,0],    label="com")
-plt.plot(log_t,log_com_p_err[:,0], label="com error")
-plt.plot(log_t,log_comref[:,0], label="com ref")
-plt.legend()
-plt.subplot(312,sharex=ax1)
-plt.title('feet forces Y') 
-plt.plot(log_t,log_lkf_sensor[:,0],label="applied force",color='b')
-plt.plot(log_t,log_rkf_sensor[:,0],label="applied force",color='r')
-plt.plot(log_t,log_lkf[:,0], label="force TSID",color='b',linestyle=':')
-plt.plot(log_t,log_rkf[:,0], label="force TSID",color='r',linestyle=':')
-plt.legend()
-plt.subplot(313,sharex=ax1)
-plt.title('feet forces Z')
-plt.plot(log_t,log_lkf_sensor[:,1],label="applied force",color='b')
-plt.plot(log_t,log_rkf_sensor[:,1],label="applied force",color='r')
-plt.plot(log_t,log_lkf[:,1], label="force TSID",color='b',linestyle=':')
-plt.plot(log_t,log_rkf[:,1], label="force TSID",color='r',linestyle=':')
-plt.legend()
+    plt.show()
 
-plt.show()
-
-#~ ax1 = plt.subplot(511)
-#~ plt.plot(log_t,log_com_p_err[:,0], label="e y")
-#~ plt.subplot(512,sharex=ax1)
-#~ plt.plot(log_t,log_com_v_err[:,0], label="de y")
-#~ plt.subplot(513,sharex=ax1)
-#~ plt.plot(log_t,log_com_a_err[:,0], label="dde y")
-#~ plt.subplot(514,sharex=ax1)
-#~ plt.plot(log_t,log_com_j_err[:,0], label="ddde y")
-#~ plt.subplot(515,sharex=ax1)
-#~ plt.plot(log_t,log_com_s_des[:,0], label="ddddc y")
-#~ plt.legend()
-#~ plt.show()
+    #~ ax1 = plt.subplot(511)
+    #~ plt.plot(log_t,log_com_p_err[:,0], label="e y")
+    #~ plt.subplot(512,sharex=ax1)
+    #~ plt.plot(log_t,log_com_v_err[:,0], label="de y")
+    #~ plt.subplot(513,sharex=ax1)
+    #~ plt.plot(log_t,log_com_a_err[:,0], label="dde y")
+    #~ plt.subplot(514,sharex=ax1)
+    #~ plt.plot(log_t,log_com_j_err[:,0], label="ddde y")
+    #~ plt.subplot(515,sharex=ax1)
+    #~ plt.plot(log_t,log_com_s_des[:,0], label="ddddc y")
+    #~ plt.legend()
+    #~ plt.show()
 
 def finite_diff(data,dt):
     fd = data.copy()
@@ -381,30 +399,55 @@ def finite_diff(data,dt):
     fd[0] = np.nan # just ignore the first points for display
     return fd
     
-axe_label = {0:'Y', 1:'Z'}
-for i in [0,1]:
+
+if PLOT_COM_DERIVATIVES :
+    axe_label = {0:'Y', 1:'Z'}    
+    for i in [0,1]:
+        ax1 = plt.subplot(511)
+        plt.plot(log_t,log_com_p[:,i], label="com " + axe_label[i]) 
+        plt.legend()
+        plt.subplot(512,sharex=ax1)
+        plt.plot(log_t,log_com_v[:,i], label="vcom "+ axe_label[i]) 
+        plt.plot(log_t,finite_diff(log_com_p[:,i],dt),':', label="fd com " + axe_label[i]) 
+        plt.legend()
+        plt.subplot(513,sharex=ax1)
+        plt.plot(log_t,log_com_a[:,i], label="acom "+ axe_label[i]) 
+        plt.plot(log_t,finite_diff(log_com_v[:,i],dt),':', label="fd vcom " + axe_label[i]) 
+        plt.legend()
+        plt.subplot(514,sharex=ax1)
+        plt.plot(log_t,log_com_j[:,i], label="jcom "+ axe_label[i]) 
+        plt.plot(log_t,finite_diff(log_com_a[:,i],dt),':', label="fd acom " + axe_label[i]) 
+        plt.legend()
+        plt.subplot(515,sharex=ax1)
+        plt.plot(log_t,log_com_s_des[:,i], label="desired scom" + axe_label[i])
+        plt.plot(log_t,finite_diff(log_com_j[:,i],dt),':', label="fd scom " + axe_label[i])
+        #~ plt.plot(log_t,log_lkf_sensor[:,1], label="force Left z")
+        #~ plt.plot(log_t,log_rkf_sensor[:,1], label="force Right z")
+        plt.legend()
+        plt.show()
+
+if PLOT_ANGULAR_MOMENTUM_DERIVATIVES:
     ax1 = plt.subplot(511)
-    plt.plot(log_t,log_com_p[:,i], label="com " + axe_label[i]) 
+    plt.plot(log_t,log_iam, label="iam ") 
     plt.legend()
     plt.subplot(512,sharex=ax1)
-    plt.plot(log_t,log_com_v[:,i], label="vcom "+ axe_label[i]) 
-    plt.plot(log_t,finite_diff(log_com_p[:,i],dt),':', label="fd com " + axe_label[i]) 
+    plt.plot(log_t,log_am, label="am ") 
+    plt.plot(log_t,finite_diff(log_iam,dt),':', label="fd iam ") 
     plt.legend()
     plt.subplot(513,sharex=ax1)
-    plt.plot(log_t,log_com_a[:,i], label="acom "+ axe_label[i]) 
-    plt.plot(log_t,finite_diff(log_com_v[:,i],dt),':', label="fd vcom " + axe_label[i]) 
+    plt.plot(log_t,log_dam, label="dam ") 
+    plt.plot(log_t,finite_diff(log_am,dt),':', label="fd am " ) 
     plt.legend()
     plt.subplot(514,sharex=ax1)
-    plt.plot(log_t,log_com_j[:,i], label="jcom "+ axe_label[i]) 
-    plt.plot(log_t,finite_diff(log_com_a[:,i],dt),':', label="fd acom " + axe_label[i]) 
+    plt.plot(log_t,log_ddam, label="ddam ") 
+    plt.plot(log_t,finite_diff(log_dam,dt),':', label="fd dam ") 
     plt.legend()
     plt.subplot(515,sharex=ax1)
-    plt.plot(log_t,log_com_s_des[:,i], label="desired scom z")
-    plt.plot(log_t,finite_diff(log_com_j[:,i],dt),':', label="fd scom " + axe_label[i])
-    #~ plt.plot(log_t,log_lkf_sensor[:,1], label="force Left z")
-    #~ plt.plot(log_t,log_rkf_sensor[:,1], label="force Right z")
-    plt.legend()
-    plt.show()
+    plt.plot(log_t,log_dddam_des, label="desired dddam")
+    plt.plot(log_t,finite_diff(log_ddam,dt),':', label="fd ddam")
+
+plt.legend()
+plt.show()
 
 #~ plt.plot(log_a_lf_fd, label = "a_lf_fd")
 #~ plt.plot(log_a_rf_fd, label = "a_rf_fd")
@@ -430,6 +473,9 @@ plt.plot(log_t,finite_diff(log_p_lf,dt),':',lw=2, label="fd lf pos")
 plt.plot(log_t,finite_diff(log_p_rf,dt),':',lw=2, label="fd rf pos")
 plt.legend()
 plt.show()
+
+#~ plt.plot(log_t,log_robotInertia)
+#~ plt.show()
 
 embed()
 

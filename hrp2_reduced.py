@@ -271,6 +271,14 @@ class Hrp2Reduced:
         arf = Rrf.act(arf)
         return alf,arf   
 
+    def get_angularMomentumJacobian(self, q, v, update=True):
+        if(update):
+            se3.ccrba(self.model, self.data, q, v);
+        Jam = self.data.Ag[3:]
+        return Jam;
+    #~ def get_baseInertia(self,q,v):
+        
+
     def display(self,q):
         se3.forwardKinematics(self.model,self.data,q)
         if self.useViewer:
@@ -401,8 +409,8 @@ if __name__ == '__main__':
     assert isapprox((Jl*a)[1:3] + driftLF.vector[1:3] , alf_fd[1:3])
     assert isapprox((Jl*a)[1:3] + driftLF.vector[1:3] , alf.vector[1:3])
 
-
-
+    Jam = robot.get_angularMomentumJacobian(q,v)
+    embed()
     
     for i in range(0,8):
         for p in np.linspace(0,1,50).tolist()+np.linspace(1,0,50).tolist():
