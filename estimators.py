@@ -11,13 +11,59 @@ class GenericEstimator:
         pass
 
 class Kalman(GenericEstimator):
-    #Todo...
-    def __init__(self, sigma_c, sigma_dc, sigma_ddc):
-        self.sigma_c   = sigma_c  
-        self.sigma_dc  = sigma_dc 
-        self.sigma_ddc = sigma_ddc
-    
+    def __init__(self,dt, sigma_c, sigma_dc, sigma_ddc, sigma_process_noise, c0, dc0, ddc0, dddc0):
+        from LQG_utils import dkalman
+        self.A = np.matrix([[1, dt, dt*dt/2, dt*dt*dt/6],
+                            [0, 1,  dt,      dt*dt/2   ],
+                            [0, 0,  1,       dt        ],
+                            [0, 0,  0,       1         ]])
+        self.B = np.matrix([0.,0.,0.,dt]).T
+        self.C = np.matrix([[1.,0.,0.,0.],
+                            [0.,1.,0.,0.],
+                            [0.,0.,1.,0.]])
+                
+        self.W = sigma_process_noise**2 * np.identity(4) #Process noise
+        self.V = np.diagflat([sigma_c**2 ,sigma_dc**2 ,sigma_ddc**2]) #Measument noise
         
+        self.x_prev = [None,None]
+        for i in [0,1]:
+            self.x_prev[i] = np.matrix([[c0.A1[i]  ],
+                                        [dc0.A1[i] ],
+                                        [ddc0.A1[i] ],
+                                        [dddc0.A1[i]]])
+
+        (self.L,S,eigValsObs)  = dkalman(self.A, self.C, self.W, self.V)
+    def update(self, c, dc, ddc, u_ddddc=np.matrix([0.,0.])):
+        A = self.A
+        B = self.B
+        C = self.C
+        L = self.L
+
+        x_predict=[None,None]
+        x_hat=[None,None]
+        y=[None,None]
+        u=[None,None]
+        
+        for i in [0,1]:
+            u[i] = u_ddddc.A1[i]
+            y[i] = np.matrix([[c.A1[i]  ],
+                              [dc.A1[i] ],
+                              [ddc.A1[i]]])            
+            x_predict[i] = A * self.x_prev[i] + B * u[i]             
+            x_hat[i]  = x_predict[i] + L*(y[i] - C * x_predict[i])
+
+        #~ x_1  = A * x_0_prev + B * u + L*(y_0 - C * x_predict)
+        #~ x_est  = x_predict + L*(y_1 - C * x_predict)
+        c_est =   np.matrix([[x_hat[0].A1[0]],
+                             [x_hat[1].A1[0]]])
+        dc_est =  np.matrix([[x_hat[0].A1[1]],
+                             [x_hat[1].A1[1]]])
+        ddc_est = np.matrix([[x_hat[0].A1[2]],
+                             [x_hat[1].A1[2]]])
+        dddc_est= np.matrix([[x_hat[0].A1[3]],
+                             [x_hat[1].A1[3]]])
+        
+        return c_est, dc_est, ddc_est, dddc_est
 class FiniteDifferences(GenericEstimator):
     #This estimator simply filter c, dc, ddc
     #and compute dddc from finite differences + filtering
@@ -45,27 +91,6 @@ if __name__ == '__main__':
     T = 4.0
     dt = 1e-3    
     
-    # noise standard deviation
-    stddev_p = 0.001 
-    stddev_v = 0.01 
-    stddev_a = 0.01 
-    
-    #~ estimator = Kalman(stddev_p,stddev_v,stddev_a)
-    estimator = FiniteDifferences(dt, 10,10,10,2)
-    log_size = int(T / dt)    #max simulation samples
-    log_p_gt = np.zeros([log_size,2])+np.nan    #position ground truth
-    log_v_gt = np.zeros([log_size,2])+np.nan    #velocity ground truth
-    log_a_gt = np.zeros([log_size,2])+np.nan    #acceleration ground truth
-    log_j_gt = np.zeros([log_size,2])+np.nan    #jerk ground truth
-    log_p_meas = np.zeros([log_size,2])+np.nan  #measured position
-    log_v_meas = np.zeros([log_size,2])+np.nan  #measured velocity
-    log_a_meas = np.zeros([log_size,2])+np.nan  #measured acceleration
-    #~ log_j_meas = np.zeros([log_size,2])+np.nan  #measured jerk
-    log_p_est = np.zeros([log_size,2])+np.nan   #estimated position
-    log_v_est = np.zeros([log_size,2])+np.nan   #estimated velocity
-    log_a_est = np.zeros([log_size,2])+np.nan   #estimated acceleration
-    log_j_est = np.zeros([log_size,2])+np.nan   #estimated jerk
-    
     def traj_sinusoid(t,start_position,stop_position,travel_time):
         # a cos(bt) + c
         A=-(stop_position-start_position)*0.5
@@ -90,6 +115,31 @@ if __name__ == '__main__':
                 np.matrix([[jy ],[jz]]), 
                 np.matrix([[sy ],[sz]]))
 
+    c0,dc0,ddc0,dddc0,_ = com_traj(0)
+    
+    # noise standard deviation
+    stddev_p = 0.001 
+    stddev_v = 0.01 
+    stddev_a = 0.01 
+    
+    estimator = Kalman(dt, stddev_p,stddev_v,stddev_a, 0.01, c0,dc0,ddc0,dddc0)
+    #~ estimator = FiniteDifferences(dt, 10,10,10,2)
+    
+    
+    log_size = int(T / dt)    #max simulation samples
+    log_p_gt = np.zeros([log_size,2])+np.nan    #position ground truth
+    log_v_gt = np.zeros([log_size,2])+np.nan    #velocity ground truth
+    log_a_gt = np.zeros([log_size,2])+np.nan    #acceleration ground truth
+    log_j_gt = np.zeros([log_size,2])+np.nan    #jerk ground truth
+    log_p_meas = np.zeros([log_size,2])+np.nan  #measured position
+    log_v_meas = np.zeros([log_size,2])+np.nan  #measured velocity
+    log_a_meas = np.zeros([log_size,2])+np.nan  #measured acceleration
+    #~ log_j_meas = np.zeros([log_size,2])+np.nan  #measured jerk
+    log_p_est = np.zeros([log_size,2])+np.nan   #estimated position
+    log_v_est = np.zeros([log_size,2])+np.nan   #estimated velocity
+    log_a_est = np.zeros([log_size,2])+np.nan   #estimated acceleration
+    log_j_est = np.zeros([log_size,2])+np.nan   #estimated jerk
+    
 
     for i in range(int(T/dt)):
         t = i*dt
@@ -102,7 +152,7 @@ if __name__ == '__main__':
         a_meas = a_gt + np.matrix(np.random.normal(0,stddev_a,2)).T
         
         #run the estimator
-        p_est,v_est,a_est,j_est = estimator.update(p_meas,v_meas,a_meas)
+        p_est,v_est,a_est,j_est = estimator.update(p_meas,v_meas,a_meas,s_gt)
         
         #log
         log_p_gt[i] = p_gt.A1
