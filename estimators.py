@@ -17,12 +17,12 @@ class Kalman(GenericEstimator):
                             [0, 1,  dt,      dt*dt/2   ],
                             [0, 0,  1,       dt        ],
                             [0, 0,  0,       1         ]])
-        self.B = np.matrix([0.,0.,0.,dt]).T
+        self.B = np.matrix([(dt**4)/24.,dt*dt*dt/6,dt*dt/2.,dt]).T
         self.C = np.matrix([[1.,0.,0.,0.],
                             [0.,1.,0.,0.],
                             [0.,0.,1.,0.]])
                 
-        self.W = sigma_process_noise**2 * np.identity(4) #Process noise
+        self.W = sigma_process_noise**2 * np.diagflat(self.B.T)/dt #Process noise
         self.V = np.diagflat([sigma_c**2 ,sigma_dc**2 ,sigma_ddc**2]) #Measument noise
         
         self.x_prev = [None,None]
@@ -51,7 +51,7 @@ class Kalman(GenericEstimator):
                               [ddc.A1[i]]])            
             x_predict[i] = A * self.x_prev[i] + B * u[i]             
             x_hat[i]  = x_predict[i] + L*(y[i] - C * x_predict[i])
-
+            self.x_prev[i] = x_hat[i]
         #~ x_1  = A * x_0_prev + B * u + L*(y_0 - C * x_predict)
         #~ x_est  = x_predict + L*(y_1 - C * x_predict)
         c_est =   np.matrix([[x_hat[0].A1[0]],
@@ -119,10 +119,10 @@ if __name__ == '__main__':
     
     # noise standard deviation
     stddev_p = 0.001 
-    stddev_v = 0.01 
-    stddev_a = 0.01 
+    stddev_v = 0.01 #gyro noise
+    stddev_a = 0.01 #fts noise / m
     
-    estimator = Kalman(dt, stddev_p,stddev_v,stddev_a, 0.01, c0,dc0,ddc0,dddc0)
+    estimator = Kalman(dt, stddev_p,stddev_v,stddev_a, 1e2, c0,dc0,ddc0,dddc0)
     #~ estimator = FiniteDifferences(dt, 10,10,10,2)
     
     
