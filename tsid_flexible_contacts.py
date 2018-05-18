@@ -73,8 +73,6 @@ class TsidFlexibleContact:
         
         se3.centerOfMass(robot.model,robot.data,q,v,zero(NV))
         X = np.hstack([np.eye(2),np.eye(2)])
-        X_pinv = np.linalg.pinv(X)
-        
         com   = robot.data.com[0][1:]
         com_v = robot.data.vcom[0][1:]
         com_a = (1/m)*X*fc + robot.model.gravity.linear[1:]
@@ -97,6 +95,7 @@ class TsidFlexibleContact:
         com_s_des = -Kp_com*com_p_err -Kd_com*com_v_err -Ka_com*com_a_err -Kj_com*com_j_err +com_s_ref
         #~ com_s_des = -100 * np.matrix([1,1]).T #FOR TEST 
         #~ com_s_des = com_s_ref #FOR TEST only the FeedForward
+        X_pinv = np.linalg.pinv(X)
         ddf_des = m*X_pinv*com_s_des
         feet_a_des = Kinv*ddf_des # This quantity is computed for debuging, but the task is now formulated in the centroidal space
 

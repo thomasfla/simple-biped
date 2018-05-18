@@ -71,13 +71,19 @@ log_com_p_err = np.zeros([log_size,2])+np.nan #Centrer of mass error
 log_com_v_err = np.zeros([log_size,2])+np.nan #Centrer of mass velocity error
 log_com_a_err = np.zeros([log_size,2])+np.nan #Centrer of mass acceleration error
 log_com_j_err = np.zeros([log_size,2])+np.nan #Centrer of mass jerk error
+
 log_com_s_des = np.zeros([log_size,2])+np.nan #Desired centrer of mass snap
-log_com_p     = np.zeros([log_size,2])+np.nan #Centrer of mass
-log_real_com_p= np.zeros([log_size,2])+np.nan #Centrer of mass computed with real state
-log_com_v     = np.zeros([log_size,2])+np.nan #Centrer of mass velocity
-log_real_com_v= np.zeros([log_size,2])+np.nan #Centrer of mass velocity with real state
-log_com_a     = np.zeros([log_size,2])+np.nan #Centrer of mass acceleration
-log_com_j     = np.zeros([log_size,2])+np.nan #Centrer of mass jerk
+
+log_com_p_est = np.zeros([log_size,2])+np.nan #Estimated Centrer of mass
+log_com_v_est = np.zeros([log_size,2])+np.nan #Estimated Centrer of mass velocity
+log_com_a_est = np.zeros([log_size,2])+np.nan #Estimated Centrer of mass acceleration
+log_com_j_est = np.zeros([log_size,2])+np.nan #Estimated Centrer of mass jerk
+
+log_com_p     = np.zeros([log_size,2])+np.nan #Centrer of mass computed with real state
+log_com_v     = np.zeros([log_size,2])+np.nan #Centrer of mass velocity computed with real state
+log_com_a     = np.zeros([log_size,2])+np.nan #Centrer of mass acceleration computed with real state
+log_com_j     = np.zeros([log_size,2])+np.nan #Centrer of mass jerk computed with real state
+
 log_iam       = np.zeros([log_size,1])+np.nan #Integral of the Angular Momentum approximated by the base orientation
 log_am        = np.zeros([log_size,1])+np.nan #Angular Momentum
 log_dam       = np.zeros([log_size,1])+np.nan #Angular Momentum derivative
@@ -150,10 +156,14 @@ def loop(q,v,f,df,niter,ndt=None,dt=None,tsleep=.9,fdisplay=100):
         q_noisy,v_noisy,f_noisy,df_noisy = ns.get_noisy_state(q,v,f,df)
         q,v,f,df = simu(q,v,control(q_noisy,v_noisy,f_noisy,df_noisy))
         #~ q,v,f,df = simu(q,v,control(q,v,f,df))  
+        
         #log the real com and his derivatives
         se3.centerOfMass(robot.model,robot.data,q,v,zero(NV))
-        log_real_com_p[log_index]   = robot.data.com[0][1:].A1
-        log_real_com_v[log_index]   = robot.data.vcom[0][1:].A1
+        X = np.hstack([np.eye(2),np.eye(2)])
+        log_com_p[log_index]   = robot.data.com[0][1:].A1
+        log_com_v[log_index]   = robot.data.vcom[0][1:].A1
+        log_com_a[log_index]   = ((1/m)*X*f + robot.model.gravity.linear[1:]).A1
+        log_com_j[log_index]   = ((1/m)*X*df).A1
         
         com_v = robot.data.vcom[0][1:]
         
@@ -221,8 +231,8 @@ def controller(q,v,f,df):
     log_q[log_index] = q.A1
     log_com_p_err[log_index] = tsid.data.com_p_err
     log_com_v_err[log_index] = tsid.data.com_v_err
-    log_com_p[log_index] = tsid.data.com_p
-    log_com_v[log_index] = tsid.data.com_v
+    log_com_p_est[log_index] = tsid.data.com_p
+    log_com_v_est[log_index] = tsid.data.com_v
     
     log_iam[log_index]       = tsid.data.iam
     log_am[log_index]        = tsid.data.am
@@ -233,8 +243,8 @@ def controller(q,v,f,df):
     if FLEXIBLE_CONTROLLER:
         log_com_a_err[log_index] = tsid.data.com_a_err
         log_com_j_err[log_index] = tsid.data.com_j_err
-        log_com_a[log_index] = tsid.data.com_a
-        log_com_j[log_index] = tsid.data.com_j
+        log_com_a_est[log_index] = tsid.data.com_a
+        log_com_j_est[log_index] = tsid.data.com_j
         #get com snap via finite fifferences
         global last_com_j
         log_com_s_des[log_index] = tsid.data.com_s_des
@@ -330,7 +340,7 @@ if PLOT_COM_AND_FORCES:
     plt.text(0.1,0.05,infostr,
             bbox={'facecolor':'white', 'alpha':0.8, 'pad':10})
     plt.title('com tracking Y')
-    plt.plot(log_t,log_com_p[:,0],    label="com")
+    plt.plot(log_t,log_com_p_est[:,0],    label="estimated com")
     plt.plot(log_t,log_com_p_err[:,0], label="com error")
     plt.plot(log_t,log_comref[:,0], label="com ref")
     plt.legend()
@@ -364,21 +374,23 @@ if PLOT_COM_DERIVATIVES :
     axe_label = {0:'Y', 1:'Z'}    
     for i in [0,1]:
         ax1 = plt.subplot(511)
+        plt.plot(log_t,log_com_p_est[:,i], label="estimated com " + axe_label[i]) 
         plt.plot(log_t,log_com_p[:,i], label="com " + axe_label[i]) 
-        plt.plot(log_t,log_real_com_p[:,i], label="com real" + axe_label[i]) 
         plt.legend()
         plt.subplot(512,sharex=ax1)
+        plt.plot(log_t,log_com_v_est[:,i], label="estimated vcom "+ axe_label[i]) 
         plt.plot(log_t,log_com_v[:,i], label="vcom "+ axe_label[i]) 
-        plt.plot(log_t,log_real_com_v[:,i], label="vcom real"+ axe_label[i]) 
         plt.plot(log_t,finite_diff(log_com_p[:,i],dt),':', label="fd com " + axe_label[i]) 
         plt.legend()
         plt.subplot(513,sharex=ax1)
+        plt.plot(log_t,log_com_a_est[:,i], label="estimated acom "+ axe_label[i]) 
         plt.plot(log_t,log_com_a[:,i], label="acom "+ axe_label[i]) 
         plt.plot(log_t,finite_diff(log_com_v[:,i],dt),':', label="fd vcom " + axe_label[i]) 
         plt.legend()
         plt.subplot(514,sharex=ax1)
+        plt.plot(log_t,log_com_j_est[:,i], label="estimated jcom "+ axe_label[i]) 
         plt.plot(log_t,log_com_j[:,i], label="jcom "+ axe_label[i]) 
-        plt.plot(log_t,finite_diff(log_com_a[:,i],dt),':', label="fd acom " + axe_label[i]) 
+        plt.plot(log_t,finite_diff(log_com_a[:,i],dt),':', label="fd acom " + axe_label[i])
         plt.legend()
         plt.subplot(515,sharex=ax1)
         plt.plot(log_t,log_com_s_des[:,i], label="desired scom" + axe_label[i])
