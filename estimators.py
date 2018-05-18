@@ -11,8 +11,9 @@ class GenericEstimator:
         pass
 
 class Kalman(GenericEstimator):
-    def __init__(self,dt, sigma_c, sigma_dc, sigma_ddc, sigma_process_noise, c0, dc0, ddc0, dddc0):
+    def __init__(self,dt, sigma_c, sigma_dc, sigma_ddc, sigma_process_noise, c0, dc0, ddc0, dddc0, dim=2):
         from LQG_utils import dkalman
+        self.dim = dim
         self.A = np.matrix([[1, dt, dt*dt/2, dt*dt*dt/6],
                             [0, 1,  dt,      dt*dt/2   ],
                             [0, 0,  1,       dt        ],
@@ -25,45 +26,68 @@ class Kalman(GenericEstimator):
         self.W = sigma_process_noise**2 * np.diagflat(self.B.T)/dt #Process noise
         self.V = np.diagflat([sigma_c**2 ,sigma_dc**2 ,sigma_ddc**2]) #Measument noise
         
-        self.x_prev = [None,None]
-        for i in [0,1]:
-            self.x_prev[i] = np.matrix([[c0.A1[i]  ],
-                                        [dc0.A1[i] ],
-                                        [ddc0.A1[i] ],
-                                        [dddc0.A1[i]]])
-
+        if self.dim == 2:
+            self.x_prev = [None,None]
+            for i in [0,1]:
+                self.x_prev[i] = np.matrix([[c0.A1[i]  ],
+                                            [dc0.A1[i] ],
+                                            [ddc0.A1[i] ],
+                                            [dddc0.A1[i]]])
+        else:
+            self.x_prev = np.matrix([[c0  ],
+                                     [dc0 ],
+                                     [ddc0 ],
+                                     [dddc0]])
         (self.L,S,eigValsObs)  = dkalman(self.A, self.C, self.W, self.V)
     def update(self, c, dc, ddc, u_ddddc=np.matrix([0.,0.])):
         A = self.A
         B = self.B
         C = self.C
         L = self.L
+        if self.dim == 2:
+            x_predict=[None,None]
+            x_hat=[None,None]
+            y=[None,None]
+            u=[None,None]
 
-        x_predict=[None,None]
-        x_hat=[None,None]
-        y=[None,None]
-        u=[None,None]
-        
-        for i in [0,1]:
-            u[i] = u_ddddc.A1[i]
-            y[i] = np.matrix([[c.A1[i]  ],
-                              [dc.A1[i] ],
-                              [ddc.A1[i]]])            
-            x_predict[i] = A * self.x_prev[i] + B * u[i]             
-            x_hat[i]  = x_predict[i] + L*(y[i] - C * x_predict[i])
-            self.x_prev[i] = x_hat[i]
-        #~ x_1  = A * x_0_prev + B * u + L*(y_0 - C * x_predict)
-        #~ x_est  = x_predict + L*(y_1 - C * x_predict)
-        c_est =   np.matrix([[x_hat[0].A1[0]],
-                             [x_hat[1].A1[0]]])
-        dc_est =  np.matrix([[x_hat[0].A1[1]],
-                             [x_hat[1].A1[1]]])
-        ddc_est = np.matrix([[x_hat[0].A1[2]],
-                             [x_hat[1].A1[2]]])
-        dddc_est= np.matrix([[x_hat[0].A1[3]],
-                             [x_hat[1].A1[3]]])
+            for i in [0,1]:
+                u[i] = u_ddddc.A1[i]
+                y[i] = np.matrix([[c.A1[i]  ],
+                                  [dc.A1[i] ],
+                                  [ddc.A1[i]]])            
+                x_predict[i] = A * self.x_prev[i] + B * u[i]             
+                x_hat[i]  = x_predict[i] + L*(y[i] - C * x_predict[i])
+                self.x_prev[i] = x_hat[i]
+            c_est =   np.matrix([[x_hat[0].A1[0]],
+                                 [x_hat[1].A1[0]]])
+            dc_est =  np.matrix([[x_hat[0].A1[1]],
+                                 [x_hat[1].A1[1]]])
+            ddc_est = np.matrix([[x_hat[0].A1[2]],
+                                 [x_hat[1].A1[2]]])
+            dddc_est= np.matrix([[x_hat[0].A1[3]],
+                                 [x_hat[1].A1[3]]])                
+        else :
+            u = u_ddddc
+            y = np.matrix([[c  ],
+                           [dc ],
+                           [ddc]])            
+            x_predict = A * self.x_prev + B * u             
+            x_hat  = x_predict + L*(y - C * x_predict)
+            self.x_prev = x_hat
+            c_est =   x_hat.A1[0],
+            dc_est =  x_hat.A1[1],
+            ddc_est = x_hat.A1[2],
+            dddc_est= x_hat.A1[3],
+
         
         return c_est, dc_est, ddc_est, dddc_est
+        
+        
+        
+        
+        
+        
+        
 class FiniteDifferences(GenericEstimator):
     #This estimator simply filter c, dc, ddc
     #and compute dddc from finite differences + filtering

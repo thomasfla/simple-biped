@@ -15,7 +15,8 @@ import quadprog
 from tsid import Tsid
 from tsid_flexible_contacts import TsidFlexibleContact
 from path import pkg, urdf 
-useViewer = False
+from noise_utils import NoisyState
+useViewer = True
 np.set_printoptions(precision=3)
 np.set_printoptions(linewidth=200)
 
@@ -54,7 +55,7 @@ Bspring = -np.diagflat([By,Bz,0.])     # damping of the feet spring
 
 #Controller parameters
 FLEXIBLE_CONTROLLER = True
-DISTURB = True
+DISTURB = False
 fc      = np.inf #cutoff frequency of the Force fiter
 Ktau    = 0.0
 Kp_post = 10
@@ -64,7 +65,6 @@ FTSfilter = FIR1LowPass(np.exp(-2*np.pi*fc*dt)) #Force sensor filter
 #~ b, a = np.array ([0.00554272,  0.01108543,  0.00554272]), np.array([1., -1.77863178,  0.80080265])
 #~ FTSfilter = BALowPass(b,a,"butter_lp_filter_Wn_05_N_2")  
 
-
 log_size = int(simulation_time / dt)    #max simulation samples
 log_comref = np.zeros([log_size,2])+np.nan    #Centrer of mass reference
 log_com_p_err = np.zeros([log_size,2])+np.nan #Centrer of mass error
@@ -73,7 +73,9 @@ log_com_a_err = np.zeros([log_size,2])+np.nan #Centrer of mass acceleration erro
 log_com_j_err = np.zeros([log_size,2])+np.nan #Centrer of mass jerk error
 log_com_s_des = np.zeros([log_size,2])+np.nan #Desired centrer of mass snap
 log_com_p     = np.zeros([log_size,2])+np.nan #Centrer of mass
+log_real_com_p= np.zeros([log_size,2])+np.nan #Centrer of mass computed with real state
 log_com_v     = np.zeros([log_size,2])+np.nan #Centrer of mass velocity
+log_real_com_v= np.zeros([log_size,2])+np.nan #Centrer of mass velocity with real state
 log_com_a     = np.zeros([log_size,2])+np.nan #Centrer of mass acceleration
 log_com_j     = np.zeros([log_size,2])+np.nan #Centrer of mass jerk
 log_iam       = np.zeros([log_size,1])+np.nan #Integral of the Angular Momentum approximated by the base orientation
@@ -129,6 +131,7 @@ if FLEXIBLE_CONTROLLER:
     Ka_com = 7.10e+03
     Kj_com = 1.40e+02
     #~ Kp_com,Kd_com,Ka_com,Kj_com = 2.4e+09, 5.0e+07, 3.5e+05, 1.0e+03
+    #~ Kp_com,Kd_com,Ka_com,Kj_com = 17160.0,  6026.0,   791.0,    46.  
     Kp_post = 10
     w_post  = 0.1
     tsid=TsidFlexibleContact(robot,Ky,Kz,w_post,Kp_post,Kp_com, Kd_com, Ka_com, Kj_com)
@@ -143,9 +146,17 @@ def loop(q,v,f,df,niter,ndt=None,dt=None,tsleep=.9,fdisplay=100):
     robot.display(q)
     for i in range(niter):
         log_index = i
-        q,v,f,df = simu(q,v,control(q,v,f,df))
-        #~ if i == 0.8/simu.dt:
-            #~ embed()
+        # add noise to the perfect state q,v,f,df
+        q_noisy,v_noisy,f_noisy,df_noisy = ns.get_noisy_state(q,v,f,df)
+        q,v,f,df = simu(q,v,control(q_noisy,v_noisy,f_noisy,df_noisy))
+        #~ q,v,f,df = simu(q,v,control(q,v,f,df))  
+        #log the real com and his derivatives
+        se3.centerOfMass(robot.model,robot.data,q,v,zero(NV))
+        log_real_com_p[log_index]   = robot.data.com[0][1:].A1
+        log_real_com_v[log_index]   = robot.data.vcom[0][1:].A1
+        
+        com_v = robot.data.vcom[0][1:]
+        
         log_lkf_sensor[log_index] =f[:2].A1
         log_rkf_sensor[log_index] =f[2:].A1
         log_lkdf_sensor[log_index] =df[:2].A1
@@ -160,11 +171,6 @@ def loop(q,v,f,df,niter,ndt=None,dt=None,tsleep=.9,fdisplay=100):
         #get feet acceleration via jacobian.
         Jl,Jr = robot.get_Jl_Jr_world(q)
         driftLF,driftRF = robot.get_driftLF_driftRF_world(q,v)
-        #~ print 'SIMU Drift LF:'
-        #~ print driftLF
-        #~ print 'SIMU Jldv:'
-        #~ print Jl*simu.dv
-        #~ embed()
         log_a_lf_jac[log_index] = (driftLF.vector + Jl*simu.dv)[1:4].A1
         log_a_rf_jac[log_index] = (driftRF.vector + Jr*simu.dv)[1:4].A1
         Mlf,Mrf = robot.get_Mlf_Mrf(q)
@@ -178,7 +184,7 @@ def loop(q,v,f,df,niter,ndt=None,dt=None,tsleep=.9,fdisplay=100):
                 time.sleep(0.01*simu.dt) # 1% jitter
     print 'Elapsed time = %.2f (simu time=%.2f)' % (time.time()-t0,simu.dt*niter)
     return q,v
-    
+
 def traj_sinusoid(t,start_position,stop_position,travel_time):
     # a cos(bt) + c
     A=-(stop_position-start_position)*0.5
@@ -199,7 +205,6 @@ assert isapprox(v1,(p2-p1)/eps)
 assert isapprox(a1,(v2-v1)/eps)
 assert isapprox(j1,(a2-a1)/eps)
 assert isapprox(s1,(j2-j1)/eps)
-
 
 def controller(q,v,f,df):
     ''' Take the sensor data (position, velocity and contact forces) 
@@ -290,10 +295,8 @@ def compute_torques_from_dv_and_forces(dv,f):
     tau = (M*dv - Jc.T*f + h)[3:]
     return tau
 
-
 tsid.callback_com=com_traj
 #~ tsid.callback_com=com_const
-
 
 q = robot.q0.copy()
 v = zero(NV)
@@ -302,38 +305,7 @@ v[:] = 0
 se3.computeAllTerms(robot.model,robot.data,robot.q0,v)
 m = robot.data.mass[0] 
 #initial state
-#~ f=np.matrix([0.,m*g/2.,0.,m*g/2.]).T
-#~ df=np.matrix([0.,0.,0.,0.]).T
 q[1]-=0.5*m*g/Kz
-f,df = simu.compute_f_df_from_q_v(q,v)
-
-#This state correspond to a case where the controller doesn't generate the desired com snap
-#~ q = np.matrix([[-1.1002889523e-03],
-               #~ [ 2.4105342493e+00],
-               #~ [ 9.6626340511e-01],
-               #~ [-2.5755588120e-01],
-               #~ [ 2.5965388219e-01],
-               #~ [-1.8695296449e+00],
-               #~ [ 2.6231845602e-01],
-               #~ [-1.8204533820e+00]])
-#~ 
-#~ v = np.matrix([[-2.3734879529],
-               #~ [ 8.8743835575],
-               #~ [-1.2443586491],
-               #~ [ 1.2387277321],
-               #~ [-9.3089974179],
-               #~ [ 1.253886252 ],
-               #~ [-9.0785100148]])
-
-#~ f = np.matrix([[ -1.4339981581],
-               #~ [960.9278822368],
-               #~ [ -1.4400254701],
-               #~ [995.2433846028]])
-#~ 
-#~ df = np.matrix([[ -26.8557024612],
-                #~ [1526.0358318129],
-                #~ [ -27.3818278172],
-                #~ [2021.1385821995]])
 f,df = simu.compute_f_df_from_q_v(q,v)
 
 
@@ -341,6 +313,7 @@ f,df = simu.compute_f_df_from_q_v(q,v)
 print "looping on TSID"
 
 #~ control = stab.tsid
+ns = NoisyState(dt)
 control = controller
 q,v = loop(q,v,f,df,log_size)
 
@@ -375,21 +348,8 @@ if PLOT_COM_AND_FORCES:
     plt.plot(log_t,log_lkf[:,1], label="force TSID",color='b',linestyle=':')
     plt.plot(log_t,log_rkf[:,1], label="force TSID",color='r',linestyle=':')
     plt.legend()
-
     plt.show()
 
-    #~ ax1 = plt.subplot(511)
-    #~ plt.plot(log_t,log_com_p_err[:,0], label="e y")
-    #~ plt.subplot(512,sharex=ax1)
-    #~ plt.plot(log_t,log_com_v_err[:,0], label="de y")
-    #~ plt.subplot(513,sharex=ax1)
-    #~ plt.plot(log_t,log_com_a_err[:,0], label="dde y")
-    #~ plt.subplot(514,sharex=ax1)
-    #~ plt.plot(log_t,log_com_j_err[:,0], label="ddde y")
-    #~ plt.subplot(515,sharex=ax1)
-    #~ plt.plot(log_t,log_com_s_des[:,0], label="ddddc y")
-    #~ plt.legend()
-    #~ plt.show()
 
 def finite_diff(data,dt):
     fd = data.copy()
@@ -405,9 +365,11 @@ if PLOT_COM_DERIVATIVES :
     for i in [0,1]:
         ax1 = plt.subplot(511)
         plt.plot(log_t,log_com_p[:,i], label="com " + axe_label[i]) 
+        plt.plot(log_t,log_real_com_p[:,i], label="com real" + axe_label[i]) 
         plt.legend()
         plt.subplot(512,sharex=ax1)
         plt.plot(log_t,log_com_v[:,i], label="vcom "+ axe_label[i]) 
+        plt.plot(log_t,log_real_com_v[:,i], label="vcom real"+ axe_label[i]) 
         plt.plot(log_t,finite_diff(log_com_p[:,i],dt),':', label="fd com " + axe_label[i]) 
         plt.legend()
         plt.subplot(513,sharex=ax1)

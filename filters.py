@@ -19,6 +19,8 @@ class FIR1LowPass:
         self.isFirstData = False
 
 
+
+
 class BALowPass:
     import numpy as np
     from scipy import signal
@@ -67,7 +69,26 @@ class BALowPass:
         self.y_buff = np.zeros([N-1,self.l])+x
         self.y      = x;
         self.isFirstData = False
-
+        
+        
+class FiniteDiff:
+    def __init__(self,dt,name='no name'):
+        '''finite differences'''
+        self.dt = dt
+        self.name = name  
+        self.isFirstData = True
+    def update(self,x):
+        if self.isFirstData:
+            self.initfilter(x)
+        self.y = (x - self.x_prev) / self.dt
+        self.x_prev = x
+        return self.y
+    def initfilter(self,x):
+        self.x_prev = x;
+        self.y      = x;
+        self.isFirstData = False
+        
+        
 if __name__ == "__main__":
     '''test and plot filters'''
     from IPython import embed
@@ -87,6 +108,7 @@ if __name__ == "__main__":
     filters.append(BALowPass(b,a,"chebi1_checby2_series")) 
 
     filters.append(FIR1LowPass(0.9,"1er order LP alpha = 0.9")) 
+    #~ filters.append(FiniteDiff(0.001,"Finite differences")) 
    
     #~ b=b*(a.sum()/b.sum()) #make sure this is a pure low pass filter !
 
