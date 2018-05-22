@@ -16,6 +16,7 @@ from tsid import Tsid
 from tsid_flexible_contacts import TsidFlexibleContact
 from path import pkg, urdf 
 from noise_utils import NoisyState
+from estimators import Kalman, get_com_and_derivatives
 useViewer = True
 np.set_printoptions(precision=3)
 np.set_printoptions(linewidth=200)
@@ -42,7 +43,7 @@ PLOT_ANGULAR_MOMENTUM_DERIVATIVES = True
 #Simulation parameters
 dt  = 1e-3
 ndt = 1
-simulation_time = 2.0
+simulation_time = 10.0
 
 #robot parameters
 tauc = 0*np.array([1.,1.,1.,1.])#coulomb friction
@@ -62,6 +63,36 @@ Kp_post = 10
 Kp_com  = 30
 w_post = 1
 FTSfilter = FIR1LowPass(np.exp(-2*np.pi*fc*dt)) #Force sensor filter
+
+ns = NoisyState(dt,robot,Ky,Kz)
+
+#Simulator
+simu = Simu(robot,dt=dt,ndt=ndt)
+simu.tauc = tauc
+simu.Krf = Kspring
+simu.Klf = Kspring
+simu.Brf = Bspring
+simu.Blf = Bspring
+
+#initial state
+NQ,NV,NB,RF,LF,RK,LK = simu.NQ,simu.NV,simu.NB,simu.RF,simu.LF,simu.RK,simu.LK
+q = robot.q0.copy()
+v = zero(NV)
+g=9.81
+v[:] = 0
+se3.computeAllTerms(robot.model,robot.data,robot.q0,v)
+m = robot.data.mass[0] 
+q[1]-=0.5*m*g/Kz
+f,df = simu.compute_f_df_from_q_v(q,v)
+c0,dc0,ddc0,dddc0 = get_com_and_derivatives(robot,q,v,f,df)
+
+# noise standard deviation
+stddev_p = 0.001 
+stddev_v = ns.std_gyry #gyro noise
+stddev_a = ns.std_fz / m #fts noise / m
+
+estimator = Kalman(dt, stddev_p,stddev_v,stddev_a, 1e2, c0,dc0,ddc0,dddc0)
+#~ estimator = None
 #~ b, a = np.array ([0.00554272,  0.01108543,  0.00554272]), np.array([1., -1.77863178,  0.80080265])
 #~ FTSfilter = BALowPass(b,a,"butter_lp_filter_Wn_05_N_2")  
 
@@ -73,6 +104,10 @@ log_com_a_err = np.zeros([log_size,2])+np.nan #Centrer of mass acceleration erro
 log_com_j_err = np.zeros([log_size,2])+np.nan #Centrer of mass jerk error
 
 log_com_s_des = np.zeros([log_size,2])+np.nan #Desired centrer of mass snap
+
+log_com_p_mes = np.zeros([log_size,2])+np.nan #Measured Centrer of mass
+log_com_v_mes = np.zeros([log_size,2])+np.nan #Measured Centrer of mass velocity
+log_com_a_mes = np.zeros([log_size,2])+np.nan #Measured Centrer of mass acceleration
 
 log_com_p_est = np.zeros([log_size,2])+np.nan #Estimated Centrer of mass
 log_com_v_est = np.zeros([log_size,2])+np.nan #Estimated Centrer of mass velocity
@@ -118,12 +153,6 @@ last_vrf = np.matrix([0,0,0]).T;
 log_t        = np.zeros([log_size,1])+np.nan  # time
 log_index = 0  
 
-simu = Simu(robot,dt=dt,ndt=ndt)
-simu.tauc = tauc
-simu.Krf = Kspring
-simu.Klf = Kspring
-simu.Brf = Bspring
-simu.Blf = Bspring
 
 if FLEXIBLE_CONTROLLER:
     #~ Kp_com = 1
@@ -140,10 +169,10 @@ if FLEXIBLE_CONTROLLER:
     #~ Kp_com,Kd_com,Ka_com,Kj_com = 17160.0,  6026.0,   791.0,    46.  
     Kp_post = 10
     w_post  = 0.1
-    tsid=TsidFlexibleContact(robot,Ky,Kz,w_post,Kp_post,Kp_com, Kd_com, Ka_com, Kj_com)
+    tsid=TsidFlexibleContact(robot,Ky,Kz,w_post,Kp_post,Kp_com, Kd_com, Ka_com, Kj_com, estimator)
 else:
     tsid=Tsid(robot,Kp_post,Kp_com)
-NQ,NV,NB,RF,LF,RK,LK = simu.NQ,simu.NV,simu.NB,simu.RF,simu.LF,simu.RK,simu.LK
+
 def loop(q,v,f,df,niter,ndt=None,dt=None,tsleep=.9,fdisplay=100):
     global log_index
     t0 = time.time()
@@ -158,14 +187,12 @@ def loop(q,v,f,df,niter,ndt=None,dt=None,tsleep=.9,fdisplay=100):
         #~ q,v,f,df = simu(q,v,control(q,v,f,df))  
         
         #log the real com and his derivatives
-        se3.centerOfMass(robot.model,robot.data,q,v,zero(NV))
-        X = np.hstack([np.eye(2),np.eye(2)])
-        log_com_p[log_index]   = robot.data.com[0][1:].A1
-        log_com_v[log_index]   = robot.data.vcom[0][1:].A1
-        log_com_a[log_index]   = ((1/m)*X*f + robot.model.gravity.linear[1:]).A1
-        log_com_j[log_index]   = ((1/m)*X*df).A1
-        
-        com_v = robot.data.vcom[0][1:]
+        com, com_v, com_a, com_j = get_com_and_derivatives(robot,q,v,f,df)
+        log_com_p[log_index]   = com.A1
+        log_com_v[log_index]   = com_v.A1
+        log_com_a[log_index]   = com_a.A1
+        log_com_j[log_index]   = com_j.A1
+
         
         log_lkf_sensor[log_index] =f[:2].A1
         log_rkf_sensor[log_index] =f[2:].A1
@@ -231,8 +258,12 @@ def controller(q,v,f,df):
     log_q[log_index] = q.A1
     log_com_p_err[log_index] = tsid.data.com_p_err
     log_com_v_err[log_index] = tsid.data.com_v_err
-    log_com_p_est[log_index] = tsid.data.com_p
-    log_com_v_est[log_index] = tsid.data.com_v
+    
+    log_com_p_mes[log_index] = tsid.data.com_p_mes
+    log_com_v_mes[log_index] = tsid.data.com_v_mes
+    
+    log_com_p_est[log_index] = tsid.data.com_p_est
+    log_com_v_est[log_index] = tsid.data.com_v_est
     
     log_iam[log_index]       = tsid.data.iam
     log_am[log_index]        = tsid.data.am
@@ -243,12 +274,15 @@ def controller(q,v,f,df):
     if FLEXIBLE_CONTROLLER:
         log_com_a_err[log_index] = tsid.data.com_a_err
         log_com_j_err[log_index] = tsid.data.com_j_err
-        log_com_a_est[log_index] = tsid.data.com_a
-        log_com_j_est[log_index] = tsid.data.com_j
+        log_com_a_mes[log_index] = tsid.data.com_a_mes
+        
+        log_com_a_est[log_index] = tsid.data.com_a_est
+        log_com_j_est[log_index] = tsid.data.com_j_est
+        
         #get com snap via finite fifferences
         global last_com_j
         log_com_s_des[log_index] = tsid.data.com_s_des
-        last_com_j = tsid.data.com_j
+        last_com_j = log_com_j[log_index-1] #tsid.data.com_j
     log_comref[log_index]    = tsid.data.comref
     log_lkf[log_index]       = tsid.data.lkf
     log_rkf[log_index]       = tsid.data.rkf
@@ -308,22 +342,8 @@ def compute_torques_from_dv_and_forces(dv,f):
 tsid.callback_com=com_traj
 #~ tsid.callback_com=com_const
 
-q = robot.q0.copy()
-v = zero(NV)
-g=9.81
-v[:] = 0
-se3.computeAllTerms(robot.model,robot.data,robot.q0,v)
-m = robot.data.mass[0] 
-#initial state
-q[1]-=0.5*m*g/Kz
-f,df = simu.compute_f_df_from_q_v(q,v)
-
-
 #control the robot with an inverse dynamic:
 print "looping on TSID"
-
-#~ control = stab.tsid
-ns = NoisyState(dt)
 control = controller
 q,v = loop(q,v,f,df,log_size)
 
@@ -340,7 +360,7 @@ if PLOT_COM_AND_FORCES:
     plt.text(0.1,0.05,infostr,
             bbox={'facecolor':'white', 'alpha':0.8, 'pad':10})
     plt.title('com tracking Y')
-    plt.plot(log_t,log_com_p_est[:,0],    label="estimated com")
+    plt.plot(log_t,log_com_p_mes[:,0],    label="measured com")
     plt.plot(log_t,log_com_p_err[:,0], label="com error")
     plt.plot(log_t,log_comref[:,0], label="com ref")
     plt.legend()
@@ -374,15 +394,18 @@ if PLOT_COM_DERIVATIVES :
     axe_label = {0:'Y', 1:'Z'}    
     for i in [0,1]:
         ax1 = plt.subplot(511)
+        plt.plot(log_t,log_com_p_mes[:,i], label="measured com " + axe_label[i]) 
         plt.plot(log_t,log_com_p_est[:,i], label="estimated com " + axe_label[i]) 
         plt.plot(log_t,log_com_p[:,i], label="com " + axe_label[i]) 
         plt.legend()
         plt.subplot(512,sharex=ax1)
+        plt.plot(log_t,log_com_v_mes[:,i], label="measured vcom "+ axe_label[i]) 
         plt.plot(log_t,log_com_v_est[:,i], label="estimated vcom "+ axe_label[i]) 
         plt.plot(log_t,log_com_v[:,i], label="vcom "+ axe_label[i]) 
         plt.plot(log_t,finite_diff(log_com_p[:,i],dt),':', label="fd com " + axe_label[i]) 
         plt.legend()
         plt.subplot(513,sharex=ax1)
+        plt.plot(log_t,log_com_a_mes[:,i], label="measured acom "+ axe_label[i]) 
         plt.plot(log_t,log_com_a_est[:,i], label="estimated acom "+ axe_label[i]) 
         plt.plot(log_t,log_com_a[:,i], label="acom "+ axe_label[i]) 
         plt.plot(log_t,finite_diff(log_com_v[:,i],dt),':', label="fd vcom " + axe_label[i]) 
@@ -394,7 +417,7 @@ if PLOT_COM_DERIVATIVES :
         plt.legend()
         plt.subplot(515,sharex=ax1)
         plt.plot(log_t,log_com_s_des[:,i], label="desired scom" + axe_label[i])
-        plt.plot(log_t,finite_diff(log_com_j[:,i],dt),':', label="fd scom " + axe_label[i])
+        plt.plot(log_t,finite_diff(log_com_j[:,i],dt),':', label="fd jcom " + axe_label[i])
         #~ plt.plot(log_t,log_lkf_sensor[:,1], label="force Left z")
         #~ plt.plot(log_t,log_rkf_sensor[:,1], label="force Right z")
         plt.legend()

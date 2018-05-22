@@ -8,13 +8,14 @@ from IPython import embed
 from utils_thomas import restert_viewer_server
 from logger import Logger
 from filters import FIR1LowPass
+from estimators import get_com_and_derivatives
 import matplotlib.pyplot as plt
 
 class Empty:
     pass
     
 class TsidFlexibleContact:
-    def __init__(self,robot,Ky,Kz,w_post,Kp_post,Kp_com, Kd_com, Ka_com, Kj_com):
+    def __init__(self,robot,Ky,Kz,w_post,Kp_post,Kp_com, Kd_com, Ka_com, Kj_com, estimator = None):
         self.robot = robot
         self.NQ = robot.model.nq
         self.NV = robot.model.nv
@@ -24,6 +25,7 @@ class TsidFlexibleContact:
         self.RK = robot.model.frames[self.RF].parent
         self.LK = robot.model.frames[self.LF].parent
         
+        self.estimator = estimator
         self.w_post = w_post
         self.Kp_post = Kp_post
         self.Kd_post = 2*sqrt(Kp_post)
@@ -34,6 +36,7 @@ class TsidFlexibleContact:
         self.Ky = Ky
         self.Kz = Kz
         self.data = Empty()
+        self.data.com_s_des = np.matrix([0.,0.]).T.A1 #need for update the com estimator at first iteration
         com_p_ref = np.matrix([0.,0.53]).T
         com_v_ref = np.matrix([0.,0.]).T
         com_a_ref = np.matrix([0.,0.]).T
@@ -54,8 +57,8 @@ class TsidFlexibleContact:
         se3.framesKinematics(robot.model,robot.data,q)
         se3.rnea(robot.model,robot.data,q,v,0*v)
         m = robot.data.mass[0]
-        M  = robot.data.M        #(7,7)
-        h  = robot.data.nle      #(7,1)
+        M = robot.data.M        #(7,7)
+        h = robot.data.nle      #(7,1)
 
         Jl,Jr = robot.get_Jl_Jr_world(q, False)
 
@@ -71,12 +74,25 @@ class TsidFlexibleContact:
         #4th order CoM via feet acceleration task **********************
         '''com_s_des -> ddf_des -> feet_a_des'''        
         
-        se3.centerOfMass(robot.model,robot.data,q,v,zero(NV))
-        X = np.hstack([np.eye(2),np.eye(2)])
-        com   = robot.data.com[0][1:]
-        com_v = robot.data.vcom[0][1:]
-        com_a = (1/m)*X*fc + robot.model.gravity.linear[1:]
-        com_j = (1/m)*X*dfc
+        #~ se3.centerOfMass(robot.model,robot.data,q,v,zero(NV))
+        #~ m = robot.data.mass[0]
+        #~ X = np.hstack([np.eye(2),np.eye(2)])
+        #~ com   = robot.data.com[0][1:]
+        #~ com_v = robot.data.vcom[0][1:]
+        #~ com_a = (1/m)*X*fc + robot.model.gravity.linear[1:]
+        #~ com_j = (1/m)*X*dfc
+        
+        #get measurment of center of mass and derivatives, (jerk  should not be used, sincd we don't really have a measurment of df)
+        com_mes, com_v_mes, com_a_mes, com_j_mes = get_com_and_derivatives(robot,q,v,fc,dfc)
+        
+        if self.estimator == None:
+            #take the measurment state as estimate, assume jerk is measured by df
+            com_est, com_v_est, com_a_est, com_j_est = com_mes, com_v_mes, com_a_mes, com_j_mes
+        else:
+            #estimate the center of mass position velocity acceleration and jerk from measurment of position, velocity and acceleration
+            last_control = np.matrix([self.data.com_s_des]) #np.matrix([0.,0.])
+            com_est, com_v_est, com_a_est, com_j_est = self.estimator.update(com_mes, com_v_mes, com_a_mes, last_control)
+        
         
         Mlf, Mrf = robot.get_Mlf_Mrf(q, False) 
  
@@ -84,17 +100,18 @@ class TsidFlexibleContact:
         com_p_ref, com_v_ref, com_a_ref, com_j_ref, com_s_ref = callback_com(t)
         
         # errors
-        com_p_err = com   - com_p_ref
-        com_v_err = com_v - com_v_ref
-        com_a_err = com_a - com_a_ref
-        com_j_err = com_j - com_j_ref
+        com_p_err = com_est   - com_p_ref
+        com_v_err = com_v_est - com_v_ref
+        com_a_err = com_a_est - com_a_ref
+        com_j_err = com_j_est - com_j_ref
 
         Kspring = -np.matrix(np.diagflat([Ky,Kz,Ky,Kz]))   # Stiffness of the feet spring
         Kinv = np.linalg.inv(Kspring)
 
         com_s_des = -Kp_com*com_p_err -Kd_com*com_v_err -Ka_com*com_a_err -Kj_com*com_j_err +com_s_ref
         #~ com_s_des = -100 * np.matrix([1,1]).T #FOR TEST 
-        #~ com_s_des = com_s_ref #FOR TEST only the FeedForward
+        #~ com_s_des = com_s_ref #FOR TEST only the FeedForward3
+        X = np.hstack([np.eye(2),np.eye(2)])
         X_pinv = np.linalg.pinv(X)
         ddf_des = m*X_pinv*com_s_des
         feet_a_des = Kinv*ddf_des # This quantity is computed for debuging, but the task is now formulated in the centroidal space
@@ -108,10 +125,10 @@ class TsidFlexibleContact:
         pyl, pzl = Mlf.translation[1:].A1
         pyr, pzr = Mrf.translation[1:].A1
         fyl, fzl, fyr, fzr = fc.A1
-        cy, cz     = com.A1
-        dcy, dcz   = com_v.A1
-        ddcy, ddcz = com_a.A1  
-        dfyl, dfzl, dfyr, dfzr = dfc.A1   
+        cy, cz     = com_est.A1
+        dcy, dcz   = com_v_est.A1
+        ddcy, ddcz = com_a_est.A1  
+        dfyl, dfzl, dfyr, dfzr = dfc.A1   #Todo express it via com jerk, impossible ??
 
         dpyl = -dfyl/Ky
         dpzl = -dfzl/Kz
@@ -142,7 +159,8 @@ class TsidFlexibleContact:
         robotInertia = Jam[0,2] 
         
         #measurments
-        iam = robotInertia * np.arcsin(q[3])
+        theta = np.arctan2(q[3],q[2])
+        iam = robotInertia * theta
         am = (Jam*v).A1[0] # Jam*v 3d ???
         dam = (pyl-cy)*fzl                  -  (pzl-cz)*fyl                  + (pyr-cy)*fzr                 -  (pzr-cz)*fyr
         ddam = (dpyl-dcy)*fzl+(pyl-cy)*dfzl - ((dpzl-dcz)*fyl+(pzl-cz)*dfyl) + (dpyr-dcy)*fzr+(pyr-cy)*dfzr - ((dpzr-dcz)*fyr+(pzr-cz)*dfyr)
@@ -238,11 +256,18 @@ class TsidFlexibleContact:
         #populate results
         self.data.lf_a_des = feet_a_des[:2]
         self.data.rf_a_des = feet_a_des[2:]
-        self.data.com_p  = com.A1
-        self.data.com_v  = com_v.A1
-        self.data.com_a  = com_a.A1
-        self.data.com_j  = com_j.A1
+        self.data.com_p_mes  = com_mes.A1
+        self.data.com_v_mes  = com_v_mes.A1
+        self.data.com_a_mes  = com_a_mes.A1
+        #~ self.data.com_j_mes  = com_j_mes.A1 # should not be able to measure jerk
+        
+        self.data.com_p_est  = com_est.A1
+        self.data.com_v_est  = com_v_est.A1
+        self.data.com_a_est  = com_a_est.A1
+        self.data.com_j_est  = com_j_est.A1
+        
         self.data.com_s_des = com_s_des.A1
+        
         self.data.com_p_err = com_p_err.A1
         self.data.com_v_err = com_v_err.A1
         self.data.com_a_err = com_a_err.A1
