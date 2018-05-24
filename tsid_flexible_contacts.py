@@ -74,14 +74,6 @@ class TsidFlexibleContact:
         #4th order CoM via feet acceleration task **********************
         '''com_s_des -> ddf_des -> feet_a_des'''        
         
-        #~ se3.centerOfMass(robot.model,robot.data,q,v,zero(NV))
-        #~ m = robot.data.mass[0]
-        #~ X = np.hstack([np.eye(2),np.eye(2)])
-        #~ com   = robot.data.com[0][1:]
-        #~ com_v = robot.data.vcom[0][1:]
-        #~ com_a = (1/m)*X*fc + robot.model.gravity.linear[1:]
-        #~ com_j = (1/m)*X*dfc
-        
         #get measurment of center of mass and derivatives, (jerk  should not be used, sincd we don't really have a measurment of df)
         com_mes, com_v_mes, com_a_mes, com_j_mes = get_com_and_derivatives(robot,q,v,fc,dfc)
         
