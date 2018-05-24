@@ -9,15 +9,16 @@ class FIR1LowPass:
     def update(self,x):
         if self.isFirstData:
             self.initfilter(x)
-        self.y_prev = self.y
+        self.y_prev = self.y.copy()
         self.y = x*(1-self.alpha) + self.y_prev*self.alpha
         #~ embed()
         return self.y
     def initfilter(self,x):
-        self.y_prev = x;
-        self.y      = x;
+        self.y_prev = x.copy();
+        self.y      = x.copy();
         self.isFirstData = False
-
+    def reset(self):
+        self.isFirstData = True
 
 
 
@@ -50,7 +51,6 @@ class BALowPass:
             return self.y.reshape(self.input_shape)
         return self.y
     def initfilter(self,x):
-        from IPython import embed
         self.l=1
         self.input_shape = None #
         if type(x) == np.ndarray:
@@ -59,17 +59,14 @@ class BALowPass:
             self.l=len(x)
             self.input_shape = x.shape
             x = x.copy().A1
-        #~ embed()
         M = len(self.b)
         N = len(self.a)
-        #~ print self.b,self.a
-        #~ print "M={}".format(M)
-        #~ print "N={}".format(N)
         self.x_buff = np.zeros([M,self.l])+x
         self.y_buff = np.zeros([N-1,self.l])+x
         self.y      = x;
         self.isFirstData = False
-        
+    def reset(self):
+        self.isFirstData = True
         
 class FiniteDiff:
     def __init__(self,dt,name='no name'):
@@ -81,13 +78,13 @@ class FiniteDiff:
         if self.isFirstData:
             self.initfilter(x)
         self.y = (x - self.x_prev) / self.dt
-        self.x_prev = x
+        self.x_prev = x.copy()
         return self.y
     def initfilter(self,x):
-        self.x_prev = x;
-        self.y      = x;
+        self.x_prev = x.copy();
         self.isFirstData = False
-        
+    def reset(self):
+        self.isFirstData = True
         
 if __name__ == "__main__":
     '''test and plot filters'''
@@ -96,7 +93,7 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     from scipy import signal
 
-    #define some silters
+    #define some filters
     filters = []
     b, a = np.array ([0.00554272,  0.01108543,  0.00554272]), np.array([1., -1.77863178,  0.80080265])
     filters.append(BALowPass(b,a,"butter_lp_filter_Wn_05_N_2"))  
