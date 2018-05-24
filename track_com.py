@@ -9,7 +9,7 @@ from quadprog import solve_qp
 from IPython import embed
 from utils_thomas import restert_viewer_server
 from logger import Logger
-from filters import FIR1LowPass, BALowPass
+from filters import FIR1LowPass, BALowPass, FiniteDiff
 import matplotlib.pyplot as plt
 import quadprog
 from tsid import Tsid
@@ -17,7 +17,7 @@ from tsid_flexible_contacts import TsidFlexibleContact
 from path import pkg, urdf 
 from noise_utils import NoisyState
 from estimators import Kalman, get_com_and_derivatives
-useViewer = True
+useViewer = False
 np.set_printoptions(precision=3)
 np.set_printoptions(linewidth=200)
 
@@ -28,43 +28,52 @@ robot = Hrp2Reduced(urdf,[pkg],loadModel=True,useViewer=useViewer)
 robot.display(robot.q0)
 if useViewer:
     robot.viewer.setCameraTransform(0,[1.9154722690582275,
-                                    -0.2266872227191925,
-                                    0.1087859719991684,
-                                    0.5243823528289795,
-                                    0.518651008605957,
-                                    0.4620114266872406,
-                                    0.4925136864185333])
-   
+                                      -0.2266872227191925,
+                                       0.1087859719991684,
+                                       0.5243823528289795,
+                                       0.518651008605957,
+                                       0.4620114266872406,
+                                       0.4925136864185333])
+
 #Plots
 PLOT_COM_AND_FORCES = True
 PLOT_COM_DERIVATIVES = True   
-PLOT_ANGULAR_MOMENTUM_DERIVATIVES = True   
+PLOT_ANGULAR_MOMENTUM_DERIVATIVES = False   
    
 #Simulation parameters
 dt  = 1e-3
-ndt = 1
-simulation_time = 10.0
-
+ndt = 10
+simulation_time = 2
+USE_REAL_STATE = True
 #robot parameters
-tauc = 0*np.array([1.,1.,1.,1.])#coulomb friction
+tauc = 0.*np.array([1.,1.,1.,1.])#coulomb friction
 Ky = 23770.
 Kz = 239018.
-By = 50. *0
-Bz = 500.*0
+By = 50. *0.5
+Bz = 500.*0.5
 Kspring = -np.diagflat([Ky,Kz,0.])     # Stiffness of the feet spring
 Bspring = -np.diagflat([By,Bz,0.])     # damping of the feet spring
 
 #Controller parameters
+fc_dtau_filter = 100. #cutoff frequency of the filter applyed to the finite differences of the torques 
 FLEXIBLE_CONTROLLER = True
 DISTURB = False
 fc      = np.inf #cutoff frequency of the Force fiter
-Ktau    = 0.0
+Ktau    = 2.0
+Kdtau   = 2.*sqrt(Ktau)*0.00 # Make it unstable ??
 Kp_post = 10
 Kp_com  = 30
-w_post = 1
+Kd_com = 2*sqrt(Kp_com)
+w_post = 0.1
 FTSfilter = FIR1LowPass(np.exp(-2*np.pi*fc*dt)) #Force sensor filter
 
 ns = NoisyState(dt,robot,Ky,Kz)
+
+#Grid of gains to try:
+#~ Kp_coms = np.linspace(1,500,3)
+#~ Kd_coms = np.linspace(1,50,8)
+Kp_coms = []
+Kd_coms = []
 
 #Simulator
 simu = Simu(robot,dt=dt,ndt=ndt)
@@ -73,24 +82,25 @@ simu.Krf = Kspring
 simu.Klf = Kspring
 simu.Brf = Bspring
 simu.Blf = Bspring
+NQ,NV,NB,RF,LF,RK,LK = simu.NQ,simu.NV,simu.NB,simu.RF,simu.LF,simu.RK,simu.LK
 
 #initial state
-NQ,NV,NB,RF,LF,RK,LK = simu.NQ,simu.NV,simu.NB,simu.RF,simu.LF,simu.RK,simu.LK
-q = robot.q0.copy()
-v = zero(NV)
+q0 = robot.q0.copy()
+v0 = zero(NV)
 g=9.81
-v[:] = 0
-se3.computeAllTerms(robot.model,robot.data,robot.q0,v)
+se3.computeAllTerms(robot.model,robot.data,robot.q0,v0)
 m = robot.data.mass[0] 
-q[1]-=0.5*m*g/Kz
-f,df = simu.compute_f_df_from_q_v(q,v)
-c0,dc0,ddc0,dddc0 = get_com_and_derivatives(robot,q,v,f,df)
+q0[1]-=0.5*m*g/Kz
+f0,df0 = simu.compute_f_df_from_q_v(q0,v0)
+c0,dc0,ddc0,dddc0 = get_com_and_derivatives(robot,q0,v0,f0,df0)
 
 # noise standard deviation
 stddev_p = 0.001 
 stddev_v = ns.std_gyry #gyro noise
 stddev_a = ns.std_fz / m #fts noise / m
 
+dtau_fd_filter = FiniteDiff(dt)
+dtau_lp_filter = FIR1LowPass(np.exp(-2*np.pi*fc_dtau_filter*dt)) #Force sensor filter
 estimator = Kalman(dt, stddev_p,stddev_v,stddev_a, 1e2, c0,dc0,ddc0,dddc0)
 #~ estimator = None
 #~ b, a = np.array ([0.00554272,  0.01108543,  0.00554272]), np.array([1., -1.77863178,  0.80080265])
@@ -103,7 +113,10 @@ log_com_v_err = np.zeros([log_size,2])+np.nan #Centrer of mass velocity error
 log_com_a_err = np.zeros([log_size,2])+np.nan #Centrer of mass acceleration error
 log_com_j_err = np.zeros([log_size,2])+np.nan #Centrer of mass jerk error
 
-log_com_s_des = np.zeros([log_size,2])+np.nan #Desired centrer of mass snap
+if FLEXIBLE_CONTROLLER:
+    log_com_s_des = np.zeros([log_size,2])+np.nan #Desired centrer of mass snap
+else:
+    log_com_a_des = np.zeros([log_size,2])+np.nan #Desired centrer of acceleration
 
 log_com_p_mes = np.zeros([log_size,2])+np.nan #Measured Centrer of mass
 log_com_v_mes = np.zeros([log_size,2])+np.nan #Measured Centrer of mass velocity
@@ -132,6 +145,8 @@ log_lkdf_sensor = np.zeros([log_size,2])+np.nan #left  knee force from FT/sensor
 log_rkdf_sensor = np.zeros([log_size,2])+np.nan #right knee force from FT/sensor (from deformation velocity)
 log_tau_des = np.zeros([log_size,4])+np.nan   #torques desired by TSID
 log_tau_est = np.zeros([log_size,4])+np.nan   #torques estimated by contact forces
+log_tau_est_fd = np.zeros([log_size,4])+np.nan   #derivative of tau_est by finite differences
+log_dtau_est = np.zeros([log_size,4])+np.nan   #filtered derivative of tau_est by finite differences
 log_tau_ctrl = np.zeros([log_size,4])+np.nan  #torque sent to the motors
 log_a_lf_fd  = np.zeros([log_size,3])+np.nan  #left foot acceleration via finite differences
 log_a_rf_fd  = np.zeros([log_size,3])+np.nan  #right foot acceleration via finite differences
@@ -171,7 +186,7 @@ if FLEXIBLE_CONTROLLER:
     w_post  = 0.1
     tsid=TsidFlexibleContact(robot,Ky,Kz,w_post,Kp_post,Kp_com, Kd_com, Ka_com, Kj_com, estimator)
 else:
-    tsid=Tsid(robot,Kp_post,Kp_com)
+    tsid=Tsid(robot,Kp_post,Kp_com,w_post)
 
 def loop(q,v,f,df,niter,ndt=None,dt=None,tsleep=.9,fdisplay=100):
     global log_index
@@ -182,9 +197,11 @@ def loop(q,v,f,df,niter,ndt=None,dt=None,tsleep=.9,fdisplay=100):
     for i in range(niter):
         log_index = i
         # add noise to the perfect state q,v,f,df
-        q_noisy,v_noisy,f_noisy,df_noisy = ns.get_noisy_state(q,v,f,df)
+        if USE_REAL_STATE:
+            q_noisy,v_noisy,f_noisy,df_noisy = q,v,f,df
+        else:
+            q_noisy,v_noisy,f_noisy,df_noisy = ns.get_noisy_state(q,v,f,df)
         q,v,f,df = simu(q,v,control(q_noisy,v_noisy,f_noisy,df_noisy))
-        #~ q,v,f,df = simu(q,v,control(q,v,f,df))  
         
         #log the real com and his derivatives
         com, com_v, com_a, com_j = get_com_and_derivatives(robot,q,v,f,df)
@@ -283,6 +300,8 @@ def controller(q,v,f,df):
         global last_com_j
         log_com_s_des[log_index] = tsid.data.com_s_des
         last_com_j = log_com_j[log_index-1] #tsid.data.com_j
+    else :
+        log_com_a_des[log_index] = tsid.data.com_a_des
     log_comref[log_index]    = tsid.data.comref
     log_lkf[log_index]       = tsid.data.lkf
     log_rkf[log_index]       = tsid.data.rkf
@@ -292,16 +311,42 @@ def controller(q,v,f,df):
     log_robotInertia[log_index] = tsid.data.robotInertia
     #estimate actual torque from contact forces
     tau_est  = compute_torques_from_dv_and_forces(dv,f_filtered)
-    tau_ctrl = torque_controller(tau_des,tau_est)
+    tau_est_fd  = dtau_fd_filter.update(tau_est) 
+    dtau_est = dtau_lp_filter.update(tau_est_fd)
+    #~ tau_ctrl = torque_controller(tau_des,tau_est)
+
+
+    if not FLEXIBLE_CONTROLLER:
+        #~ tau_ctrl = tau_des + Ktau*(tau_des-tau_est) - Kdtau * dtau_est
+        # regulation on forces
+        f_des = tsid.data.f 
+        f_ctrl = f_des + Ktau * Ktau * (f_des - f_filtered)
+        tau_ctrl = compute_torques_from_dv_and_forces(dv,f_ctrl) - Kdtau * df
+    else:
+        tau_ctrl = tau_des 
+
+    
     log_tau_ctrl[log_index] = tau_ctrl.A1
     log_tau_est[log_index]  = tau_est.A1
+    log_tau_est_fd[log_index]  = tau_est_fd.A1
+    log_dtau_est[log_index]  = dtau_est.A1
     log_tau_des[log_index]  = tau_des.A1
     log_t[log_index]        = t
     if not log_index%100 :
         print "t:{0} \t com error \t{1} ".format(log_index*dt, np.linalg.norm(tsid.data.com_p_err))
+    #check that the state does'nt go crazy
+    if np.linalg.norm(tsid.data.com_p_err) > 1:
+        raise ValueError("COM error > 1")
+    if np.linalg.norm(tsid.data.f) > 500000:
+        raise ValueError("Forces > 500000")
+    if np.linalg.norm(q) > 10:
+        raise ValueError("q > 10")
+        
     return np.vstack([f_disturb_traj(t),tau_ctrl])
-def torque_controller(tau_des,tau_est):
-    return tau_des + Ktau*(tau_des-tau_est)
+    
+#~ def torque_controller(tau_des,tau_est):
+    #~ return tau_des + Ktau*(tau_des-tau_est)
+
     
 def f_disturb_traj(t):
     if DISTURB:
@@ -333,20 +378,41 @@ def com_const(t):
 def compute_torques_from_dv_and_forces(dv,f):
     M  = robot.data.M        #(7,7)
     h  = robot.data.nle      #(7,1)
-    Jl = se3.frameJacobian(robot.model,robot.data,LF)       
-    Jr = se3.frameJacobian(robot.model,robot.data,RF)
+    Jl,Jr = robot.get_Jl_Jr_world(q, False)
     Jc = np.vstack([Jl[1:3],Jr[1:3]])    # (4, 7)
     tau = (M*dv - Jc.T*f + h)[3:]
     return tau
 
-tsid.callback_com=com_traj
-#~ tsid.callback_com=com_const
+#~ tsid.callback_com=com_traj
+tsid.callback_com=com_const
+
 
 #control the robot with an inverse dynamic:
-print "looping on TSID"
 control = controller
+q,v,f,df = q0.copy(), v0.copy(), f0.copy(), df0.copy()
 q,v = loop(q,v,f,df,log_size)
-
+result = ""
+for Kp_com in Kp_coms:
+    for Kd_com in Kd_coms:
+        
+        tsid.Kp_com = Kp_com
+        tsid.Kd_com = Kd_com
+        FTSfilter.reset()
+        dtau_fd_filter.reset()
+        dtau_lp_filter.reset()
+        q,v,f,df = q0.copy(), v0.copy(), f0.copy(), df0.copy()
+        isstable=True
+        try:
+            q,v = loop(q,v,f,df,log_size)
+        except ValueError:
+            isstable=False
+        print "Kp_com={}, Kd_com={}, Stable? {}".format(Kp_com,Kd_com,isstable)
+        if isstable:
+            result += "*"
+        else:
+            result += "-"
+        print result
+    result += "\n"
 if PLOT_COM_AND_FORCES:
     ax1 = plt.subplot(311)
     infostr = "Infos:"
@@ -407,6 +473,8 @@ if PLOT_COM_DERIVATIVES :
         plt.subplot(513,sharex=ax1)
         plt.plot(log_t,log_com_a_mes[:,i], label="measured acom "+ axe_label[i]) 
         plt.plot(log_t,log_com_a_est[:,i], label="estimated acom "+ axe_label[i]) 
+        if not FLEXIBLE_CONTROLLER :
+            plt.plot(log_t,log_com_a_des[:,i], label="desired acom" + axe_label[i])
         plt.plot(log_t,log_com_a[:,i], label="acom "+ axe_label[i]) 
         plt.plot(log_t,finite_diff(log_com_v[:,i],dt),':', label="fd vcom " + axe_label[i]) 
         plt.legend()
@@ -416,7 +484,8 @@ if PLOT_COM_DERIVATIVES :
         plt.plot(log_t,finite_diff(log_com_a[:,i],dt),':', label="fd acom " + axe_label[i])
         plt.legend()
         plt.subplot(515,sharex=ax1)
-        plt.plot(log_t,log_com_s_des[:,i], label="desired scom" + axe_label[i])
+        if FLEXIBLE_CONTROLLER :
+            plt.plot(log_t,log_com_s_des[:,i], label="desired scom" + axe_label[i])
         plt.plot(log_t,finite_diff(log_com_j[:,i],dt),':', label="fd jcom " + axe_label[i])
         #~ plt.plot(log_t,log_lkf_sensor[:,1], label="force Left z")
         #~ plt.plot(log_t,log_rkf_sensor[:,1], label="force Right z")
@@ -442,9 +511,8 @@ if PLOT_ANGULAR_MOMENTUM_DERIVATIVES:
     plt.subplot(515,sharex=ax1)
     plt.plot(log_t,log_dddam_des, label="desired dddam")
     plt.plot(log_t,finite_diff(log_ddam,dt),':', label="fd ddam")
-
-plt.legend()
-plt.show()
+    plt.legend()
+    plt.show()
 
 #~ plt.plot(log_a_lf_fd, label = "a_lf_fd")
 #~ plt.plot(log_a_rf_fd, label = "a_rf_fd")
@@ -453,27 +521,33 @@ plt.show()
 
 log_a_lf_fd[0]=np.nan
 log_a_rf_fd[0]=np.nan
-plt.plot(log_a_lf_fd[:,:2], label = "log_a_lf_fd")
-plt.plot(log_a_lf_jac[:,:2], label = "a_lf_jac")
-plt.plot(log_a_lf_des, label = "log_a_lf_des")
+#~ plt.plot(log_a_lf_fd[:,:2], label = "log_a_lf_fd")
+#~ plt.plot(log_a_lf_jac[:,:2], label = "a_lf_jac")
+#~ plt.plot(log_a_lf_des, label = "log_a_lf_des")
 
-plt.legend()
-plt.show()
+#~ plt.legend()
+#~ plt.show()
 
-plt.plot(log_dv_simu[:] - log_dv_tsid[:], label = "dv_simu-dv_tsid")
-plt.legend()
-plt.show()
+#~ plt.plot(log_dv_simu[:] - log_dv_tsid[:], label = "dv_simu-dv_tsid")
+#~ plt.legend()
+#~ plt.show()
 
-plt.plot(log_t,log_v_lf,label="lf vel" + axe_label[i])
-plt.plot(log_t,log_v_rf,label="rf vel" + axe_label[i])
-plt.plot(log_t,finite_diff(log_p_lf,dt),':',lw=2, label="fd lf pos")
-plt.plot(log_t,finite_diff(log_p_rf,dt),':',lw=2, label="fd rf pos")
-plt.legend()
-plt.show()
+#~ plt.plot(log_t,log_v_lf,label="lf vel" + axe_label[i])
+#~ plt.plot(log_t,log_v_rf,label="rf vel" + axe_label[i])
+#~ plt.plot(log_t,finite_diff(log_p_lf,dt),':',lw=2, label="fd lf pos")
+#~ plt.plot(log_t,finite_diff(log_p_rf,dt),':',lw=2, label="fd rf pos")
+#~ plt.legend()
+#~ plt.show()
 
 #~ plt.plot(log_t,log_robotInertia)
 #~ plt.show()
 
+
+plt.plot(log_t,log_tau_est, label="tau estimated via contact forces")
+plt.plot(log_t,log_tau_est_fd,label="finite differences of tau")
+plt.plot(log_t,1+log_dtau_est,label="filtered finite differences of tau")
+plt.legend()
+plt.show()
 embed()
 
 
