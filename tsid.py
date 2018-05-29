@@ -13,7 +13,7 @@ class Empty:
     pass
     
 class Tsid:
-    def __init__(self,robot,Kp_post,Kp_com,w_post):
+    def __init__(self,robot,Ky,Kz,Kp_post,Kp_com,w_post):
         self.robot = robot
         self.NQ = robot.model.nq
         self.NV = robot.model.nv
@@ -22,6 +22,9 @@ class Tsid:
         self.LF = robot.model.getFrameId('lankle')
         self.RK = robot.model.frames[self.RF].parent
         self.LK = robot.model.frames[self.LF].parent
+        
+        self.Ky = Ky
+        self.Kz = Kz
         
         self.w_post = w_post
         self.Kp_post = Kp_post
@@ -39,10 +42,12 @@ class Tsid:
         if V is None: 
             V=2*sqrt(P)
             self.P,self.V = P,V
-    def solve(self,q,v,t=0.0):
+    def solve(self,q,v,fc,dfc,t=0.0):
         robot=self.robot
         NQ,NV,NB,RF,LF,RK,LK = self.NQ,self.NV,self.NB,self.RF,self.LF,self.RK,self.LK
         w_post = self.w_post
+        Ky = self.Ky
+        Kz = self.Kz
         Kp_post, Kd_post = self.Kp_post, self.Kd_post
         Kp_com,  Kd_com  = self.Kp_com,  self.Kd_com
         callback_com = self.callback_com
@@ -50,10 +55,12 @@ class Tsid:
         se3.computeAllTerms(robot.model,robot.data,q,v)
         se3.framesKinematics(robot.model,robot.data,q)
         se3.rnea(robot.model,robot.data,q,v,0*v)
+        m = robot.data.mass[0]
+        g = robot.model.gravity.linear[1:]
         M  = robot.data.M        #(7,7)
         h  = robot.data.nle      #(7,1)
         
-        Jl,Jr = robot.get_Jl_Jr_world(q, False)
+        Jl,Jr = robot.get_Jl_Jr_world(q, True)
 
         # Formulate contact and dynamic constrains *********************
         #        7    4     4       7  4  4
@@ -77,8 +84,9 @@ class Tsid:
         
         #only dynamics
         #~ Ac = np.hstack([M ,-Jc.T,-S.T])
-        #~ bc = h 
+        #~ bc = -h 
 
+        
         #friction cone constrains
         mu = 0.5 # need more realistic value !!!!!!!!!!!!!!!!!!!!!!!!!!!
         Aic = np.zeros([4,15])
@@ -119,6 +127,76 @@ class Tsid:
         A_com  = np.hstack([Jcom,z3])
         b_com  = com_a_des - com_drift
 
+        #CoM task via ADMITANCE CONTROL ********************************
+        Aec = np.vstack([np.hstack([M ,-Jc.T,-S.T]),
+                         np.hstack([np.zeros([4,7]) ,np.eye(4),np.zeros([4,4])])])
+        bec = np.vstack([-h,
+                         fc])
+        
+        Kspring = -np.matrix(np.diagflat([Ky,Kz,Ky,Kz]))   # Stiffness of the feet spring
+        Kinv = np.linalg.inv(Kspring)
+        
+        #~ Mlf, Mrf = robot.get_Mlf_Mrf(q, False) 
+        #~ pyl, pzl = Mlf.translation[1:].A1
+        #~ pyr, pzr = Mrf.translation[1:].A1
+        #~ feet_p = np.matrix([pyl,pzl,pyr, pzr]).T 
+        feet_p = Kinv*fc
+        feet_v = Kinv*dfc
+        X_com = np.hstack([np.eye(2),np.eye(2)])
+        
+        Jam = robot.get_angularMomentumJacobian(q,v)
+        robotInertia = Jam[0,2] 
+        
+        #measurments
+        Mlf, Mrf = robot.get_Mlf_Mrf(q, False) # This should come from the forces wicth can be filtered, but need for p0l p0r
+        pyl, pzl = Mlf.translation[1:].A1
+        pyr, pzr = Mrf.translation[1:].A1
+        fyl, fzl, fyr, fzr = fc.A1
+        cy, cz     = com_est.A1
+        theta = np.arctan2(q[3],q[2])
+        iam = robotInertia * theta
+        am = (Jam*v).A1[0] # Jam*v 3d ???
+        fyl, fzl, fyr, fzr = fc.A1
+        cy, cz     = com_est.A1
+        X_am  = np.matrix([-(pzl-cz),+(pyl-cy),-(pzr-cz),+(pyr-cy)])
+        
+        Kp_am = Kp_com
+        Kd_am = Kd_com
+    
+        iam_ref = 0
+        am_ref  = 0
+        
+        iam_err  =  iam -  iam_ref
+        am_err   =   am -   am_ref
+
+        dam_des = -Kp_am*iam_err -Kd_am*am_err 
+        
+        
+        Kf = Kinv 
+        Kp = 400.
+        Kd = 2*sqrt(Kp)
+        
+        #com only
+        #~ X = X_com
+        #~ X_pinv = np.linalg.pinv(X)
+        #~ f_des = X_pinv*m*(com_a_des-g)
+        
+        
+        #com + am
+        X = np.vstack([X_com,
+                       X_am])
+        X_pinv = np.linalg.pinv(X)
+        f_des = X_pinv*np.vstack( [m*(com_a_des-g),
+                                       dam_des   ] )
+                                       
+                                       
+        feet_p_des = -Kinv*np.linalg.pinv(X_com)*m*g + Kf*(f_des - fc)
+        feet_a_des = Kp * (feet_p_des - feet_p) - Kd * feet_v
+        #~ feet_a_des = np.matrix([0.,-10.,0.,-10]).T #TEST
+        
+        A_admcom  = np.hstack([Jc, np.matrix(np.zeros([4,8]))])
+        b_admcom  = feet_a_des - dJcdq
+        
         #posture task  *************************************************
         Jpost = np.hstack([np.zeros([4,3]),np.eye(4)])
         post_p_ref = robot.q0[4:] #only the actuated part !
@@ -136,8 +214,10 @@ class Tsid:
         #~ print "posture error \t{0}".format(np.linalg.norm(post_p_err))
 
         #stack all tasks
-        A=np.vstack([A_com,A_post])
-        b=np.vstack([b_com,b_post])
+        #~ A=np.vstack([A_com,A_post])
+        #~ b=np.vstack([b_com,b_post])
+        A=np.vstack([A_admcom,A_post])
+        b=np.vstack([b_admcom,b_post])
         #~ A=A_post
         #~ b=b_post
         #~ A=A_com
@@ -169,8 +249,10 @@ class Tsid:
         
         
         #populate results
-        self.data.lf_a_des = np.matrix([0.,0.]).T
-        self.data.rf_a_des = np.matrix([0.,0.]).T
+        #~ self.data.lf_a_des = np.matrix([0.,0.]).T 
+        #~ self.data.rf_a_des = np.matrix([0.,0.]).T
+        self.data.lf_a_des = feet_a_des[:2]
+        self.data.rf_a_des = feet_a_des[2:]
         self.data.com_p_mes  = com_mes.A1
         self.data.com_v_mes  = com_v_mes.A1
         self.data.com_a_mes  = np.matrix([0.,0.]).T.A1
@@ -192,18 +274,23 @@ class Tsid:
         
         self.data.robotInertia = 0
 
-        self.data.iam  = 0
-        self.data.am   = 0
+        self.data.iam  = iam
+        self.data.am   = am
         self.data.dam  = 0
         self.data.ddam = 0
-        self.data.dddam_des = 0
+        self.data.dddam_des = 0 #None in rigid contact controller
         
         self.data.lkf    = f[:2].A1
         self.data.rkf    = f[2:].A1
         self.data.tau    = tau
         self.data.dv     = dv
         self.data.f      = f
-
+        #~ print "feet_a_des"
+        #~ print feet_a_des
+        #~ print "Jc*dv + dJcdq"
+        #~ print Jc*dv + dJcdq
+        #~ assert(isapprox(feet_a_des , Jc*dv + dJcdq))
+        #~ embed()
         return np.vstack([zero(3),tau])
         
 
@@ -214,10 +301,10 @@ if __name__ == "__main__":
     import time
     from path import pkg, urdf 
     robot = Hrp2Reduced(urdf,[pkg],loadModel=True,useViewer=False)
-    tsid=Tsid(robot,Kp_post=10,Kp_com=30,w_post=0.001)
+    tsid=Tsid(robot,100,100,Kp_post=10,Kp_com=30,w_post=0.001)
     niter= 3000
     t0 = time.time()
     for i in range(niter):
-        tsid.solve(robot.q0,np.zeros([7,1]))
+        tsid.solve(robot.q0,np.zeros([7,1]),np.matrix([0.,0.,0.,0.]).T,np.matrix([0.,0.,0.,0.]).T)
     print 'TSID average time = %.5f ms' % ((time.time()-t0)/(1e-3*niter)) #0.53ms
     embed()
