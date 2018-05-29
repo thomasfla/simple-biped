@@ -17,6 +17,7 @@ from tsid_flexible_contacts import TsidFlexibleContact
 from path import pkg, urdf 
 from noise_utils import NoisyState
 from estimators import Kalman, get_com_and_derivatives
+from plot import plot_gain_stability
 import os
 import time
 useViewer = False
@@ -442,8 +443,7 @@ if 1:
         outDir = "./data/{}/".format(num)
         os.makedirs(outDir)
         np.savez(outDir + "stab.npz", Kd_grid=Kd_grid, Kp_grid=Kp_grid, stab_grid=stab_grid)
-        plt.contourf(Kd_grid,Kp_grid,stab_grid,1)
-        plt.plot(Kd_grid.flatten(), Kp_grid.flatten(),'o')
+        plot_gain_stability(Kd_grid,Kp_grid,stab_grid)
         plt.savefig(outDir + "stab.png")
         plt.show()
 if PLOT_COM_AND_FORCES:
