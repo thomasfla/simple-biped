@@ -139,7 +139,7 @@ class TsidFlexibleContact:
         
         # iam is the integral of the angular momentum approximated by the base orientation.
         # am dam ddam and dddam are the angular momentum derivatives 
-                
+        
         K_iam  = Kp_com # take the same gains as the CoM
         K_am   = Kd_com
         K_dam  = Ka_com
@@ -195,9 +195,6 @@ class TsidFlexibleContact:
         z4 = np.matrix(np.zeros([7,4+4]))
         A_post  = w_post*np.hstack([Jpost,z4]) 
         b_post  = w_post*post_a_des   
-        #~ A_post[2,2] = 0. # For tests, remove angular regulation 
-        #~ b_post[2] = 0.        
-        #~ print "posture error \t{0}".format(np.linalg.norm(post_p_err))
 
         #stack all tasks
         A=np.vstack([A_feet, A_post])
