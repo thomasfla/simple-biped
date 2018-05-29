@@ -17,6 +17,8 @@ from tsid_flexible_contacts import TsidFlexibleContact
 from path import pkg, urdf 
 from noise_utils import NoisyState
 from estimators import Kalman, get_com_and_derivatives
+import os
+import time
 useViewer = False
 np.set_printoptions(precision=3)
 np.set_printoptions(linewidth=200)
@@ -42,21 +44,21 @@ PLOT_ANGULAR_MOMENTUM_DERIVATIVES = False
    
 #Simulation parameters
 dt  = 1e-3
-ndt = 10
-simulation_time = 2
+ndt = 1
+simulation_time = 2.0
 USE_REAL_STATE = True
 #robot parameters
 tauc = 0.*np.array([1.,1.,1.,1.])#coulomb friction
 Ky = 23770.
 Kz = 239018.
-By = 50. *0.5
-Bz = 500.*0.5
+By = 50. *0.
+Bz = 500.*0.
 Kspring = -np.diagflat([Ky,Kz,0.])     # Stiffness of the feet spring
 Bspring = -np.diagflat([By,Bz,0.])     # damping of the feet spring
 
 #Controller parameters
 fc_dtau_filter = 100. #cutoff frequency of the filter applyed to the finite differences of the torques 
-FLEXIBLE_CONTROLLER = True
+FLEXIBLE_CONTROLLER = False
 DISTURB = False
 fc      = np.inf #cutoff frequency of the Force fiter
 Ktau    = 2.0
@@ -64,16 +66,17 @@ Kdtau   = 2.*sqrt(Ktau)*0.00 # Make it unstable ??
 Kp_post = 10
 Kp_com  = 30
 Kd_com = 2*sqrt(Kp_com)
-w_post = 0.1
+w_post = 0.001
 FTSfilter = FIR1LowPass(np.exp(-2*np.pi*fc*dt)) #Force sensor filter
 
 ns = NoisyState(dt,robot,Ky,Kz)
 
 #Grid of gains to try:
-#~ Kp_coms = np.linspace(1,500,3)
-#~ Kd_coms = np.linspace(1,50,8)
-Kp_coms = []
-Kd_coms = []
+#~ 
+Kd_coms = np.linspace(1,100,50)
+Kp_coms = np.linspace(1,500,50)
+#~ Kp_coms = [1,1]
+#~ Kd_coms = [1,100]
 
 #Simulator
 simu = Simu(robot,dt=dt,ndt=ndt)
@@ -186,7 +189,7 @@ if FLEXIBLE_CONTROLLER:
     w_post  = 0.1
     tsid=TsidFlexibleContact(robot,Ky,Kz,w_post,Kp_post,Kp_com, Kd_com, Ka_com, Kj_com, estimator)
 else:
-    tsid=Tsid(robot,Kp_post,Kp_com,w_post)
+    tsid=Tsid(robot,Ky,Kz,Kp_post,Kp_com,w_post)
 
 def loop(q,v,f,df,niter,ndt=None,dt=None,tsleep=.9,fdisplay=100):
     global log_index
@@ -262,14 +265,14 @@ assert isapprox(s1,(j2-j1)/eps)
 
 def controller(q,v,f,df):
     ''' Take the sensor data (position, velocity and contact forces) 
-    and generate a torque command'''
+    and generate a torque command '''
     t=log_index*simu.dt
     #filter forces
     f_filtered = FTSfilter.update(f)
     if FLEXIBLE_CONTROLLER:
         tsid.solve(q,v,f,df,t)
     else:
-        tsid.solve(q,v,t)
+        tsid.solve(q,v,f,df,t)
     dv      = tsid.data.dv
     tau_des = tsid.data.tau
     log_q[log_index] = q.A1
@@ -319,26 +322,26 @@ def controller(q,v,f,df):
     if not FLEXIBLE_CONTROLLER:
         #~ tau_ctrl = tau_des + Ktau*(tau_des-tau_est) - Kdtau * dtau_est
         # regulation on forces
-        f_des = tsid.data.f 
-        f_ctrl = f_des + Ktau * Ktau * (f_des - f_filtered)
-        tau_ctrl = compute_torques_from_dv_and_forces(dv,f_ctrl) - Kdtau * df
+        #~ f_des = tsid.data.f 
+        #~ f_ctrl = f_des + Ktau * Ktau * (f_des - f_filtered)
+        #~ tau_ctrl = compute_torques_from_dv_and_forces(dv,f_ctrl) - Kdtau * df
+        tau_ctrl = tau_des 
     else:
         tau_ctrl = tau_des 
 
-    
-    log_tau_ctrl[log_index] = tau_ctrl.A1
-    log_tau_est[log_index]  = tau_est.A1
+    log_tau_ctrl[log_index]    = tau_ctrl.A1
+    log_tau_est[log_index]     = tau_est.A1
     log_tau_est_fd[log_index]  = tau_est_fd.A1
-    log_dtau_est[log_index]  = dtau_est.A1
-    log_tau_des[log_index]  = tau_des.A1
-    log_t[log_index]        = t
+    log_dtau_est[log_index]    = dtau_est.A1
+    log_tau_des[log_index]     = tau_des.A1
+    log_t[log_index]           = t
     if not log_index%100 :
         print "t:{0} \t com error \t{1} ".format(log_index*dt, np.linalg.norm(tsid.data.com_p_err))
     #check that the state does'nt go crazy
-    if np.linalg.norm(tsid.data.com_p_err) > 1:
-        raise ValueError("COM error > 1")
-    if np.linalg.norm(tsid.data.f) > 500000:
-        raise ValueError("Forces > 500000")
+    if np.linalg.norm(tsid.data.com_p_err) > 0.1:
+        raise ValueError("COM error > 0.1")
+    if np.linalg.norm(tsid.data.f) > 350:
+        raise ValueError("Forces > 350")
     if np.linalg.norm(q) > 10:
         raise ValueError("q > 10")
         
@@ -388,31 +391,61 @@ tsid.callback_com=com_const
 
 
 #control the robot with an inverse dynamic:
-control = controller
-q,v,f,df = q0.copy(), v0.copy(), f0.copy(), df0.copy()
-q,v = loop(q,v,f,df,log_size)
-result = ""
-for Kp_com in Kp_coms:
-    for Kd_com in Kd_coms:
-        
-        tsid.Kp_com = Kp_com
-        tsid.Kd_com = Kd_com
-        FTSfilter.reset()
-        dtau_fd_filter.reset()
-        dtau_lp_filter.reset()
-        q,v,f,df = q0.copy(), v0.copy(), f0.copy(), df0.copy()
-        isstable=True
-        try:
-            q,v = loop(q,v,f,df,log_size)
-        except ValueError:
-            isstable=False
-        print "Kp_com={}, Kd_com={}, Stable? {}".format(Kp_com,Kd_com,isstable)
-        if isstable:
-            result += "*"
-        else:
-            result += "-"
-        print result
-    result += "\n"
+if 1:
+    control = controller
+    q,v,f,df = q0.copy(), v0.copy(), f0.copy(), df0.copy()
+    q,v = loop(q,v,f,df,log_size)
+    result = ""
+    KpKd = []
+    stab_grid = np.zeros([len(Kp_coms),len(Kd_coms)])+np.nan
+    Kp_grid = np.zeros([len(Kp_coms),len(Kd_coms)])+np.nan
+    Kd_grid = np.zeros([len(Kp_coms),len(Kd_coms)])+np.nan
+    i=0
+    for Kp_com in Kp_coms:
+        j=0
+        for Kd_com in Kd_coms:
+            #change controller gains
+            tsid.Kp_com = Kp_com
+            tsid.Kd_com = Kd_com
+            
+            #reset all entity with internal states
+            simu.reset()
+            FTSfilter.reset()
+            dtau_fd_filter.reset()
+            dtau_lp_filter.reset()
+            
+            #start from initial state
+            q,v,f,df = q0.copy(), v0.copy(), f0.copy(), df0.copy()
+            isstable=True
+            #simulate and test stability
+            try:
+                q,v = loop(q,v,f,df,log_size)
+            except ValueError:
+                isstable=False
+            print "Kp_com={}, Kd_com={}, Stable? {}".format(Kp_com,Kd_com,isstable)
+            KpKd.append([Kp_com,Kd_com])
+            stab_grid[i,j] = isstable
+            Kp_grid[i,j] = Kp_com
+            Kd_grid[i,j] = Kd_com
+            
+            if isstable:
+                result += "*"
+            else:
+                result += "-"
+            print result
+            j+=1
+        result += "\n"
+        i+=1
+    if i !=0:
+        #save the stability region plot and data
+        num = int(time.time()) #simple unique increasing timestamp
+        outDir = "./data/{}/".format(num)
+        os.makedirs(outDir)
+        np.savez(outDir + "stab.npz", Kd_grid=Kd_grid, Kp_grid=Kp_grid, stab_grid=stab_grid)
+        plt.contourf(Kd_grid,Kp_grid,stab_grid,1)
+        plt.plot(Kd_grid.flatten(), Kp_grid.flatten(),'o')
+        plt.savefig(outDir + "stab.png")
+        plt.show()
 if PLOT_COM_AND_FORCES:
     ax1 = plt.subplot(311)
     infostr = "Infos:"
@@ -521,16 +554,16 @@ if PLOT_ANGULAR_MOMENTUM_DERIVATIVES:
 
 log_a_lf_fd[0]=np.nan
 log_a_rf_fd[0]=np.nan
-#~ plt.plot(log_a_lf_fd[:,:2], label = "log_a_lf_fd")
-#~ plt.plot(log_a_lf_jac[:,:2], label = "a_lf_jac")
-#~ plt.plot(log_a_lf_des, label = "log_a_lf_des")
+plt.plot(log_a_lf_fd[:,:2], label = "log_a_lf_fd")
+plt.plot(log_a_lf_jac[:,:2], label = "a_lf_jac")
+plt.plot(log_a_lf_des, label = "log_a_lf_des")
+#~ 
+plt.legend()
+plt.show()
 
-#~ plt.legend()
-#~ plt.show()
-
-#~ plt.plot(log_dv_simu[:] - log_dv_tsid[:], label = "dv_simu-dv_tsid")
-#~ plt.legend()
-#~ plt.show()
+plt.plot(log_dv_simu[:] - log_dv_tsid[:], label = "dv_simu-dv_tsid")
+plt.legend()
+plt.show()
 
 #~ plt.plot(log_t,log_v_lf,label="lf vel" + axe_label[i])
 #~ plt.plot(log_t,log_v_rf,label="rf vel" + axe_label[i])
@@ -543,11 +576,11 @@ log_a_rf_fd[0]=np.nan
 #~ plt.show()
 
 
-plt.plot(log_t,log_tau_est, label="tau estimated via contact forces")
-plt.plot(log_t,log_tau_est_fd,label="finite differences of tau")
-plt.plot(log_t,1+log_dtau_est,label="filtered finite differences of tau")
-plt.legend()
-plt.show()
+#~ plt.plot(log_t,log_tau_est, label="tau estimated via contact forces")
+#~ plt.plot(log_t,log_tau_est_fd,label="finite differences of tau")
+#~ plt.plot(log_t,1+log_dtau_est,label="filtered finite differences of tau")
+#~ plt.legend()
+#~ plt.show()
 embed()
 
 
