@@ -1,9 +1,10 @@
-import pinocchio as se3
-from pinocchio.robot_wrapper import RobotWrapper
-from pinocchio.utils import *
+#import pinocchio as se3
+#from pinocchio.robot_wrapper import RobotWrapper
+#from pinocchio.utils import *
 from math import pi,sqrt
-from IPython import embed
+#from IPython import embed
 import matplotlib.pyplot as plt
+import numpy as np
 
 class GenericEstimator:
     def update(self, c, dc, ddc):
@@ -23,7 +24,7 @@ class Kalman(GenericEstimator):
                             [0.,1.,0.,0.],
                             [0.,0.,1.,0.]])
                 
-        self.W = sigma_process_noise**2 * np.diagflat(self.B.T)/dt #Process noise
+        self.W = sigma_process_noise**2 * self.B*self.B.T #Process noise
         self.V = np.diagflat([sigma_c**2 ,sigma_dc**2 ,sigma_ddc**2]) #Measument noise
         
         if self.dim == 2:
@@ -214,7 +215,6 @@ if __name__ == '__main__':
     plt.plot(log_j_gt[:,axis]  , label="Jerk Ground Truth")
     plt.legend()
     plt.show()
-    embed()
     
 def get_com_and_derivatives(robot, q,v,f,df, recompute=True):
     '''Compute the CoM position, velocity, acceleration and jerk from 
