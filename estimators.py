@@ -1,8 +1,8 @@
-#import pinocchio as se3
-#from pinocchio.robot_wrapper import RobotWrapper
-#from pinocchio.utils import *
+import pinocchio as se3
+from pinocchio.robot_wrapper import RobotWrapper
+from pinocchio.utils import *
 from math import pi,sqrt
-#from IPython import embed
+from IPython import embed
 import matplotlib.pyplot as plt
 import numpy as np
 

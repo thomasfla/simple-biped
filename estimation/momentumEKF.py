@@ -5,7 +5,7 @@
 
 import math
 import numpy as np
-from numpy import dot, zeros, eye
+from numpy import dot, zeros, eye, ones
 import scipy.linalg as linalg
 from ExtendedKalmanFilter import ExtendedKalmanFilter
 
