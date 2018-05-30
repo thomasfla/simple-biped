@@ -17,6 +17,8 @@ from tsid_flexible_contacts import TsidFlexibleContact
 from path import pkg, urdf 
 from noise_utils import NoisyState
 from estimators import Kalman, get_com_and_derivatives
+
+from estimation.momentumEKF import *
 from plot import plot_gain_stability
 import os
 import time
@@ -46,7 +48,7 @@ PLOT_ANGULAR_MOMENTUM_DERIVATIVES = False
 #Simulation parameters
 dt  = 1e-3
 ndt = 1
-simulation_time = 2.0
+simulation_time = 20.0
 USE_REAL_STATE = True
 #robot parameters
 tauc = 0.*np.array([1.,1.,1.,1.])#coulomb friction
@@ -59,7 +61,7 @@ Bspring = -np.diagflat([By,Bz,0.])     # damping of the feet spring
 
 #Controller parameters
 fc_dtau_filter = 100. #cutoff frequency of the filter applyed to the finite differences of the torques 
-FLEXIBLE_CONTROLLER = False
+FLEXIBLE_CONTROLLER = True
 DISTURB = False
 fc      = np.inf #cutoff frequency of the Force fiter
 Ktau    = 2.0
@@ -70,7 +72,6 @@ Kd_com = 2*sqrt(Kp_com)
 w_post = 0.001
 FTSfilter = FIR1LowPass(np.exp(-2*np.pi*fc*dt)) #Force sensor filter
 
-ns = NoisyState(dt,robot,Ky,Kz)
 
 #Grid of gains to try:
 #~ 
@@ -97,15 +98,44 @@ m = robot.data.mass[0]
 q0[1]-=0.5*m*g/Kz
 f0,df0 = simu.compute_f_df_from_q_v(q0,v0)
 c0,dc0,ddc0,dddc0 = get_com_and_derivatives(robot,q0,v0,f0,df0)
+l0 = 0
 
-# noise standard deviation
-stddev_p = 0.001 
-stddev_v = ns.std_gyry #gyro noise
-stddev_a = ns.std_fz / m #fts noise / m
 
 dtau_fd_filter = FiniteDiff(dt)
 dtau_lp_filter = FIR1LowPass(np.exp(-2*np.pi*fc_dtau_filter*dt)) #Force sensor filter
+
+
+#Noise applied on the state to get a simulated measurment
+ns = NoisyState(dt,robot,Ky,Kz)
+
+# noise standard deviation
+n_x = 9+4
+n_u = 4
+n_y = 9
+sigma_x_0 = 1e0              # initial state estimate std dev
+sigma_ddf = 1e2*ones(4)      # control (i.e. force accelerations) noise std dev used in EKF
+sigma_ddf_sim = 1e2*ones(4)  # control (i.e. force accelerations) noise std dev used in simulation
+sigma_c  = 1e-3*ones(2)      # CoM position measurement noise std dev
+sigma_dc = 1e-2*ones(2)      # CoM velocity measurement noise std dev
+sigma_l  = 1e0*ones(1)      # angular momentum measurement noise std dev
+sigma_f  = 1e-2*m*ones(4)       # force measurement noise std dev
+S_0 = sigma_x_0**2 * np.eye(n_x)
+
+
+#to be replaced with EKF momentum estimator
+stddev_p = 0.001 
+stddev_v = ns.std_gyry #gyro noise
+stddev_a = ns.std_fz / m #fts noise / m
 estimator = Kalman(dt, stddev_p,stddev_v,stddev_a, 1e2, c0,dc0,ddc0,dddc0)
+
+#andrea's estimator works with array...
+c0_array  = c0.A1
+dc0_array = dc0.A1
+dc0_array = dc0.A1
+l0_array  = np.array([l0])
+f0_array = f0.A1
+centroidalEstimator = MomentumEKF(dt, m, g, c0_array, dc0_array, l0_array, f0_array, S_0, sigma_c, sigma_dc, sigma_l, sigma_f, sigma_ddf)
+
 #~ estimator = None
 #~ b, a = np.array ([0.00554272,  0.01108543,  0.00554272]), np.array([1., -1.77863178,  0.80080265])
 #~ FTSfilter = BALowPass(b,a,"butter_lp_filter_Wn_05_N_2")  
@@ -205,7 +235,21 @@ def loop(q,v,f,df,niter,ndt=None,dt=None,tsleep=.9,fdisplay=100):
             q_noisy,v_noisy,f_noisy,df_noisy = q,v,f,df
         else:
             q_noisy,v_noisy,f_noisy,df_noisy = ns.get_noisy_state(q,v,f,df)
-        q,v,f,df = simu(q,v,control(q_noisy,v_noisy,f_noisy,df_noisy))
+        
+        #Run the centroidal estimation (not used yet)
+        com_noisy, com_v_noisy, com_a_noisy, com_j_noisy = get_com_and_derivatives(robot,q_noisy,v_noisy,f_noisy,df_noisy)
+        l_noisy = robot.get_angularMomentum(q_noisy,v_noisy)
+         #convert
+        com_noisy_array = com_noisy.A1
+        com_v_noisy_array = com_v_noisy.A1
+        l_noisy_array = np.array([l_noisy])
+        #~ centroidalEstimator.predict_update(com_noisy, com_v_noisy_array, l_noisy_array, f_noisy, p, ddf)
+        
+        #Run controller
+        u = control(q_noisy,v_noisy,f_noisy,df_noisy)
+        
+        #simulate the system
+        q,v,f,df = simu(q,v,u)
         
         #log the real com and his derivatives
         com, com_v, com_a, com_j = get_com_and_derivatives(robot,q,v,f,df)
@@ -214,8 +258,7 @@ def loop(q,v,f,df,niter,ndt=None,dt=None,tsleep=.9,fdisplay=100):
         log_com_a[log_index]   = com_a.A1
         log_com_j[log_index]   = com_j.A1
 
-        
-        log_lkf_sensor[log_index] =f[:2].A1
+        log_lkf_sensor[log_index] =f[:2].A1 #todo rename
         log_rkf_sensor[log_index] =f[2:].A1
         log_lkdf_sensor[log_index] =df[:2].A1
         log_rkdf_sensor[log_index] =df[2:].A1
@@ -319,7 +362,6 @@ def controller(q,v,f,df):
     dtau_est = dtau_lp_filter.update(tau_est_fd)
     #~ tau_ctrl = torque_controller(tau_des,tau_est)
 
-
     if not FLEXIBLE_CONTROLLER:
         #~ tau_ctrl = tau_des + Ktau*(tau_des-tau_est) - Kdtau * dtau_est
         # regulation on forces
@@ -347,10 +389,6 @@ def controller(q,v,f,df):
         raise ValueError("q > 10")
         
     return np.vstack([f_disturb_traj(t),tau_ctrl])
-    
-#~ def torque_controller(tau_des,tau_est):
-    #~ return tau_des + Ktau*(tau_des-tau_est)
-
     
 def f_disturb_traj(t):
     if DISTURB:
@@ -446,6 +484,7 @@ if 1:
         plot_gain_stability(Kd_grid,Kp_grid,stab_grid)
         plt.savefig(outDir + "stab.png")
         plt.show()
+
 if PLOT_COM_AND_FORCES:
     ax1 = plt.subplot(311)
     infostr = "Infos:"

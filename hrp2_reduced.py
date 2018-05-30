@@ -276,9 +276,13 @@ class Hrp2Reduced:
             se3.ccrba(self.model, self.data, q, v);
         Jam = self.data.Ag[3:]
         return Jam;
-    #~ def get_baseInertia(self,q,v):
+    
+    def get_angularMomentum(self, q, v, update=True):
+        Jam = self.get_angularMomentumJacobian(q,v, update)
+        robotInertia = Jam[0,2] 
+        am = (Jam*v).A1[0]
+        return am
         
-
     def display(self,q):
         se3.forwardKinematics(self.model,self.data,q)
         if self.useViewer:

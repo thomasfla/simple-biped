@@ -153,7 +153,7 @@ class TsidFlexibleContact:
         #measurments
         theta = np.arctan2(q[3],q[2])
         iam = robotInertia * theta
-        am = (Jam*v).A1[0] # Jam*v 3d ???
+        am = (Jam*v).A1[0] # Jam*v 3d ???  #todo use get_angularMomentum
         dam = (pyl-cy)*fzl                  -  (pzl-cz)*fyl                  + (pyr-cy)*fzr                 -  (pzr-cz)*fyr
         ddam = (dpyl-dcy)*fzl+(pyl-cy)*dfzl - ((dpzl-dcz)*fyl+(pzl-cz)*dfyl) + (dpyr-dcy)*fzr+(pyr-cy)*dfzr - ((dpzr-dcz)*fyr+(pzr-cz)*dfyr)
 
