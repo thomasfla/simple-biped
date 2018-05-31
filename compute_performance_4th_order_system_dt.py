@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from numpy.linalg import eigvals
-from numpy.random import uniform
+from numpy.random import uniform, normal
 from scipy.linalg import expm
 from math import sqrt
 #from control import tf, margin, bode_plot, step_response, feedback, nyquist_plot
@@ -10,7 +10,7 @@ np.set_printoptions(precision=2, suppress=True, linewidth=100);
 
 print "\n******************* COMPUTE PERFORMANCE FOR 4-TH ORDER SYSTEM  *******************"
 print "Compute performance (rise-time, overshoot, settling time) for LTI 4-th order system"
-print "as a function of PD CoM gains"
+print "in discrete time, as a function of PD CoM gains"
 
 def compute_transition_matrix(K, dt):
     dt2 = dt*dt/2.0
@@ -22,21 +22,22 @@ def compute_transition_matrix(K, dt):
                    [0,         0,        0,       1]])
     B = np.array([dt4, dt3, dt2, dt]).T
     H = A - np.outer(B,K)
-    return H;
+    return (H, A, B);
            
 def max_eigen_value(gains, dt):
-    A = compute_transition_matrix(gains, dt);
-    ei = eigvals(A);
+    (H, A, B) = compute_transition_matrix(gains, dt);
+    ei = eigvals(H);
     return np.max(np.abs(ei))
     
-def step_response(K, dt, N):
+def step_response(K, dt, N, v):
     '''Compute step response'''
-    n = 4;
+    n = K.shape[0];
     x = np.zeros((N,n));
     x[0,0] = 1.0;
-    H = compute_transition_matrix(K, dt);
+    (H, A, B) = compute_transition_matrix(K, dt);
+    BK = np.outer(B,K);
     for i in range(N-1):
-        x[i+1,:] = np.dot(H, x[i,:])
+        x[i+1,:] = np.dot(A, x[i,:]) - np.dot(BK, x[i,:] + v[i,:])
     return x
 
 def compute_4th_order_gains_from_admittance_gains(k, kf, kp, kd, kcp, kcd):
@@ -46,11 +47,14 @@ def compute_4th_order_gains_from_admittance_gains(k, kf, kp, kd, kcp, kcd):
     return np.array([k1, k2, k3, kd]);
     
 # USER PARAMETERS
-DO_PLOTS = 0
-MAX_GAIN = 1e2
-N_TESTS = int(1e3)
+DO_PLOTS = 1
+MAX_GAIN = [5e2, 1e2]
+N_TESTS = int(1e1)
 N = 6000               # number of time steps in step response
-dt = 0.01              # sampling time of step response
+dt = 0.001              # sampling time of step response
+
+v_std   = np.array([1e-3, 1e-2, 1e-2, 1e1])
+
 FALL_PERCENTAGE = 0.1
 SETTLING_PERCENTAGE = 0.05
 
@@ -70,7 +74,7 @@ kf = 1.0/k      # force proportional gain
 # If kp=100 => w=10 => x(1) = 0.0005*x(0), x(0.5)=0.04*x(0)
 # If kp=25  => w=5  => x(1) = 0.04*x(0),   x(0.5)=0.3*x(0)
 
-print "Gonna perform %d tests with random CoM gains between 0 and %.1f\n" % (N_TESTS, MAX_GAIN)
+print "Gonna perform %d tests with random CoM gains: max kp=%.1f, max kd=%.1f\n" % (N_TESTS, MAX_GAIN[0], MAX_GAIN[1])
 
 n_unstable = 0;
 n_good_perf = 0;
@@ -80,9 +84,19 @@ kcp_bad = []
 kcd_bad = []
 kcp_good = []
 kcd_good = []
+
+n = v_std.shape[0]
+v = np.zeros((N, n))
+v_zero = np.zeros((N, n))
+zer = np.zeros(n)
+for i in range(N-1):
+    v[i,:] = normal(zer, v_std)
+    
 for i in range(N_TESTS):
-    kcp = uniform(low=0.0, high=MAX_GAIN)   # com proportional gain
-    kcd = uniform(low=0.0, high=MAX_GAIN)   # com derivative gain
+    if(i%100==0):
+        print i
+    kcp = uniform(low=0.0, high=MAX_GAIN[0])   # com proportional gain
+    kcd = uniform(low=0.0, high=MAX_GAIN[1])   # com derivative gain
     
     gains = compute_4th_order_gains_from_admittance_gains(k, kf, kp, kd, kcp, kcd)
     
@@ -93,7 +107,7 @@ for i in range(N_TESTS):
         kcd_unstable += [kcd,]
         continue;
         
-    x = step_response(gains, dt, N)
+    x = step_response(gains, dt, N, v)
     
     overshoot = -np.min(x[:,0])
 
@@ -112,14 +126,16 @@ for i in range(N_TESTS):
         kcp_bad += [kcp,]
         kcd_bad += [kcd,]
     
-    print "Max(Ev)=%4.1f \t Overshoot: %4.2f\t Fall time: %5.1f\t Settling time %5.1f" % (maxEv, overshoot, T_fall, T_sett)
-    
     if(DO_PLOTS):
-        plt.plot(x[:,0]);
+        print "Max(Ev)=%5.3f\t Overshoot: %4.2f\t Fall time: %5.1f\t Settling time %5.1f" % (maxEv, overshoot, T_fall, T_sett)
+        x_no_noise = step_response(gains, dt, N, v_zero)
+        plt.plot(x[:,0], label='x');
+        plt.plot(x_no_noise[:,0], label='x no noise')
         plt.plot([0, T_fall/dt],   [FALL_PERCENTAGE, FALL_PERCENTAGE], 'r:')
         plt.plot([T_sett/dt, N-1], [SETTLING_PERCENTAGE, SETTLING_PERCENTAGE], 'b:')
         plt.plot([T_sett/dt, N-1], [-SETTLING_PERCENTAGE, -SETTLING_PERCENTAGE], 'b:')
         plt.plot([0, np.argmin(x[:,0])], [-overshoot, -overshoot], 'g:')
+        plt.legend()
         plt.show();
 
 print "\n%d tests finished"%(N_TESTS)
@@ -130,6 +146,9 @@ print "Number of good performance tests: ", n_good_perf
 plt.plot(kcp_unstable, kcd_unstable, 'r o', label='unstable')
 plt.plot(kcp_bad,      kcd_bad,      'b x', label='bad')
 plt.plot(kcp_good,     kcd_good,     'k o', label='good')
+kp = np.arange(0.0, MAX_GAIN[0], 1.0)
+kd = 2.0*np.sqrt(kp)
+plt.plot(kp, kd, label='kd=2*sqrt(kp)')
 plt.legend()
 plt.xlabel('Kp')
 plt.ylabel('Kd')

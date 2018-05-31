@@ -48,8 +48,8 @@ def compute_4th_order_gains_from_admittance_gains(k, kf, kp, kd, kcp, kcd):
     
 # USER PARAMETERS
 DO_PLOTS = 0
-MAX_GAIN = 1e2
-N_TESTS = int(1e3)
+MAX_GAIN = [5e2, 1e2]
+N_TESTS = int(1e4)
 N = 6000               # number of time steps in step response
 dt = 0.001              # sampling time of step response
 FALL_PERCENTAGE = 0.1
@@ -71,7 +71,7 @@ kf = 1.0/k      # force proportional gain
 # If kp=100 => w=10 => x(1) = 0.0005*x(0), x(0.5)=0.04*x(0)
 # If kp=25  => w=5  => x(1) = 0.04*x(0),   x(0.5)=0.3*x(0)
 
-print "Gonna perform %d tests with random CoM gains between 0 and %.1f\n" % (N_TESTS, MAX_GAIN)
+print "Gonna perform %d tests with random CoM gains: max kp=%.1f, max kd=%.1f\n" % (N_TESTS, MAX_GAIN[0], MAX_GAIN[1])
 
 n_unstable = 0;
 n_good_perf = 0;
@@ -82,8 +82,8 @@ kcd_bad = []
 kcp_good = []
 kcd_good = []
 for i in range(N_TESTS):
-    kcp = uniform(low=0.0, high=MAX_GAIN)   # com proportional gain
-    kcd = uniform(low=0.0, high=MAX_GAIN)   # com derivative gain
+    kcp = uniform(low=0.0, high=MAX_GAIN[0])   # com proportional gain
+    kcd = uniform(low=0.0, high=MAX_GAIN[1])   # com derivative gain
     
     gains = compute_4th_order_gains_from_admittance_gains(k, kf, kp, kd, kcp, kcd)
     
@@ -131,6 +131,9 @@ print "Number of good performance tests: ", n_good_perf
 plt.plot(kcp_unstable, kcd_unstable, 'r o', label='unstable')
 plt.plot(kcp_bad,      kcd_bad,      'b x', label='bad')
 plt.plot(kcp_good,     kcd_good,     'k o', label='good')
+kp = np.arange(0.0, MAX_GAIN[0], 1.0)
+kd = 2.0*np.sqrt(kp)
+plt.plot(kp, kd, label='kd=2*sqrt(kp)')
 plt.legend()
 plt.xlabel('Kp')
 plt.ylabel('Kd')
