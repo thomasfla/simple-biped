@@ -102,6 +102,7 @@ class CloseLoopSEA:
         delta = b_bar**2 - 4*a_bar*c_bar
         if(delta<0.0):
             # system unstable for any value of lambda
+            print "SEA unstable for any value of lambda"
             return [0.0, -1.0]
         # bounds based on 2nd RH condition k0 < k1*k2/k3 - (k1/k3)^2
         lb = (-b_bar - sqrt(delta)) / (2*a_bar)

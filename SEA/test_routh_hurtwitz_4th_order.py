@@ -3,10 +3,11 @@ import numpy as np
 import numpy.linalg as la
 from scipy.linalg import expm
 import matplotlib.pyplot as plt
+import matplotlib.colors as colors
 from numpy.linalg import eigvals
 from numpy.random import uniform
 from math import sqrt
-from sea_dynamics import SEA
+from sea_dynamics import SEA, get_SEA_parameters
 from sea_dynamics_closed_loop import CloseLoopSEA
 
 np.set_printoptions(precision=2, suppress=True, linewidth=100);
@@ -19,8 +20,8 @@ def compute_lambda_bounds(k, I_j, b_j, I_m, b_m, k_tau_bounds, b_tau_bounds, n_p
         k_tau = np.linspace(k_tau_bounds[0], k_tau_bounds[1], n_points)
         b_tau = np.linspace(b_tau_bounds[0], b_tau_bounds[1], n_points)
     K,B = np.meshgrid(k_tau, b_tau)
-    print 'k_tau', k_tau
-    print 'b_tau', b_tau
+    #print 'k_tau', k_tau
+    #print 'b_tau', b_tau
     lambda_min = np.empty((n_points, n_points))
     lambda_max = np.empty((n_points, n_points))
     for i in range(n_points):
@@ -32,64 +33,76 @@ def compute_lambda_bounds(k, I_j, b_j, I_m, b_m, k_tau_bounds, b_tau_bounds, n_p
     
 # USER PARAMETERS
 COMPUTE_LAMBDA_BOUNDS = 1
-TEST_LAMBDA_BOUNDS = 1000
-TEST_ROUTH_HURWITZ = 1000
-SAMPLE_STABLE_IMPEDANCE_SPACE = 10000
-TEST_CLOSED_LOOP_SEA = 10
+TEST_LAMBDA_BOUNDS = -10000
+TEST_ROUTH_HURWITZ = -10000
+SAMPLE_STABLE_IMPEDANCE_SPACE = -10000
+TEST_CLOSED_LOOP_SEA = -10
 
 dt = 1e-5
 T = 1.5
 x_0 = np.array([0.1, 0.0, 0.1, 0.0])
 
-k = 1e5         # spring stiffness
-I_j = 0.014     # joint inertia
-b_j = 0.1       # joint damping
-I_m = 0.225     # motor inertia
-b_m = 0.1*1.375     # motor damping
+SEA_param_name = 'Paine2017'
+#SEA_param_name = 'Focchi2013'
+(k, I_j, b_j, I_m, b_m) = get_SEA_parameters(SEA_param_name)
 
-k_tau_0 = 0.1 #01*30.0;
-b_tau_0 = 0.1 #*0.57;
-k_p = 100.0*I_j;
-k_d = 2.0*sqrt(k_p)
+k_tau_0 = 0.1
+b_tau_0 = 0.1
 
-MAX_KP = I_j*1e7
-MAX_KD = 3*sqrt(MAX_KP) #I_j*1e6
-KTAU_BOUNDS = [0.1, 1e6]
-BTAU_BOUNDS = [0.1, 10.0]
+MAX_KP = I_j*1e6
+MAX_KD = 3*sqrt(MAX_KP)
+KTAU_BOUNDS = [1e-7, 1e10]
+BTAU_BOUNDS = [1e-4, 1e4]
 N_TESTS = int(1e2)
+
+print "Gonna use SEA parameters from", SEA_param_name
+print "SEA stiffness is", k
 
 if(COMPUTE_LAMBDA_BOUNDS):
     print "\n******************* COMPUTE LAMBDA BOUNDS *******************"
+    print "Assuming kp=lambda^2 and kd=2*lambda, compute the lambda bounds"
+    print "for different values of the torque PD gains."
+    print "We sample k_tau in [%f, %f]"%(KTAU_BOUNDS[0], KTAU_BOUNDS[1])
+    print "We sample b_tau in [%f, %f]"%(BTAU_BOUNDS[0], BTAU_BOUNDS[1])
     
-    (K, B, l_min, l_max) = compute_lambda_bounds(k, I_j, b_j, I_m, b_m, KTAU_BOUNDS, BTAU_BOUNDS, 50)
+    (K, B, l_min, l_max) = compute_lambda_bounds(k, I_j, b_j, I_m, b_m, KTAU_BOUNDS, BTAU_BOUNDS, 100)
     
     i = np.unravel_index(np.argmax(l_max), l_max.shape)
-    print "Largest  lambda_max found: %.1f for k_tau=%.1f, b_tau=%.1f" % (
+    print "Largest  lambda_max found: %7.1f for k_tau=%5f, b_tau=%5f" % (
         l_max[i], K[i], B[i])
     i = np.unravel_index(np.argmax(l_min), l_max.shape)
-    print "Largest  lambda_min found: %.1f for k_tau=%.1f, b_tau=%.1f" % (
+    print "Largest  lambda_min found: %7.1f for k_tau=%5f, b_tau=%5f" % (
         l_min[i], K[i], B[i])
     i = np.unravel_index(np.argmin(l_max), l_max.shape)
-    print "Smallest  lambda_max found: %.1f for k_tau=%.1f, b_tau=%.1f" % (
+    print "Smallest lambda_max found: %7.1f for k_tau=%5f, b_tau=%5f" % (
         l_max[i], K[i], B[i])
     i = np.unravel_index(np.argmin(l_min), l_max.shape)
-    print "Smallest  lambda_min found: %.1f for k_tau=%.1f, b_tau=%.1f" % (
+    print "Smallest lambda_min found: %7.1f for k_tau=%5f, b_tau=%5f" % (
         l_min[i], K[i], B[i])
         
-    fig = plt.figure(figsize = (12,8))
-    fig.subplots_adjust(wspace=0.3)
-    plt.pcolormesh(K, B, l_max, cmap=plt.cm.get_cmap('Blues'))
-    plt.colorbar()
-    plt.xlabel('k_tau')
-    plt.ylabel('b_tau')
-    plt.title('Lambda Max')
-    plt.xscale('log')
-    plt.yscale('log')
+    # plot using different scales
+    plot_scales = [('log', 'log')]
+    for ps in plot_scales:
+        fig = plt.figure(figsize = (12,8))
+        fig.subplots_adjust(wspace=0.3)
+        if(ps[0]=='log'):
+            # use log scale for color map
+            plt.pcolormesh(K, B, l_max, cmap=plt.cm.get_cmap('Blues'),
+                           norm=colors.LogNorm(vmin=l_max.min(), vmax=l_max.max()))
+        else:
+            plt.pcolormesh(K, B, l_max, cmap=plt.cm.get_cmap('Blues'))
+        plt.colorbar()
+        plt.xlabel('k_tau')
+        plt.ylabel('b_tau')
+        plt.title('Lambda Max')
+        if(ps[1]=='log'):
+            plt.xscale('log')
+            plt.yscale('log')
     plt.show()
 
 
 if(TEST_LAMBDA_BOUNDS>0):
-    print "\n******************* TEST LAMBDA BOUNDS *******************"
+    print "\n\n******************* TEST LAMBDA BOUNDS *******************"
     print "Gonna perform %d tests on lambda bounds to check that" % (TEST_LAMBDA_BOUNDS)
     print "when lambda is within the bounds the closed-loop system is stable."
     
@@ -116,11 +129,11 @@ if(TEST_LAMBDA_BOUNDS>0):
                 print "[ERROR] System stable but lambda=%.2f not in [%.1f, %.1f]"%(
                         lmbda, lambda_min, lambda_max)
     print "Tests finished. Number of unstable gains found: %d" % (n_unstable)
-    print "Number of errors found: %d\n" %(n_err)
+    print "Number of errors found: %d" %(n_err)
     
 
 if(TEST_ROUTH_HURWITZ>0):
-    print "\n******************* TEST ROUTH_HURWITZ *******************"
+    print "\n\n******************* TEST ROUTH_HURWITZ *******************"
     print "Gonna perform %d tests on Routh-Hurwitz conditions to check that" % (TEST_ROUTH_HURWITZ)
     print "when they are satisfied the closed-loop system is stable."
 
@@ -150,7 +163,7 @@ if(TEST_ROUTH_HURWITZ>0):
     
 
 if(SAMPLE_STABLE_IMPEDANCE_SPACE>0):
-    print "\n******************* SAMPLE STABLE IMPEDANCE SPACE *******************"
+    print "\n\n******************* SAMPLE STABLE IMPEDANCE SPACE *******************"
     print "Gonna take %d samples of impedance space using constant" % (SAMPLE_STABLE_IMPEDANCE_SPACE)
     print "torque PD gain. k_tau=%.1f\t b_tau=%.1f"%(k_tau_0, b_tau_0)
     print "and sampling kp in [0.0, %.1f]"%(MAX_KP)
@@ -173,7 +186,7 @@ if(SAMPLE_STABLE_IMPEDANCE_SPACE>0):
             kp_good += [k_p,]
             kd_good += [k_d,]
             
-    print "Sampling finished.\n\n"
+    print "Sampling finished."
     plt.plot(kp_unstable, kd_unstable, 'r o', label='unstable')
     plt.plot(kp_good,     kd_good,     'k o', label='good')
     kp = np.arange(0.0, MAX_KP, 1.0)
@@ -186,11 +199,12 @@ if(SAMPLE_STABLE_IMPEDANCE_SPACE>0):
     
     
 if(TEST_CLOSED_LOOP_SEA>0):
-    print "\n******************* TEST CLOSED-LOOP SEA *******************"
+    print "\n\n******************* TEST CLOSED-LOOP SEA *******************"
     print "Gonna perform %d tests to check that closed-loop SEA dynamics" % (TEST_CLOSED_LOOP_SEA)
-    print "is correct."
+    print "matches open-loop SEA dynamics coupled with discrete-time controller"
+    print "with dt=%f"%(dt)
 
-    DO_PLOTS = 1
+    DO_PLOTS = 0
     N = int(T/dt)
     sea    = SEA(dt, k, I_j, b_j, I_m, b_m)
     n_unstable = 0;
@@ -234,16 +248,16 @@ if(TEST_CLOSED_LOOP_SEA>0):
             x_cl[t+1,2] = cl_sea.tau()
             x_cl[t+1,3] = cl_sea.dtau()
         
-        print "Max position trajectory error: ", np.max(np.abs(x[:,0]-x_cl[:,0]))
+        print "Test %d. Max position traj error: "%(i), np.max(np.abs(x[:,0]-x_cl[:,0]))
         
         if(DO_PLOTS):
             f, ax = plt.subplots(5,1,sharex=True);
             labels = ['qj','dqj','tau','dtau']
             for j in range(4):
-                ax[j].plot(x[:,j],    '-',  label=labels[j]);
-                ax[j].plot(x_cl[:,j], 'r--', label=labels[j]);
-                if(j==2):
-                    ax[j].plot(tau_d, label='tau_des')
+                ax[j].plot(x[:,j],    '-',  label=labels[j]+' open loop');
+                ax[j].plot(x_cl[:,j], 'r--', label=labels[j]+' closed loop');
+                #if(j==2):
+                #    ax[j].plot(tau_d, label='tau_des')
                 ax[j].legend()
             ax[-1].plot(u, label='tau_m')
             ax[-1].legend()

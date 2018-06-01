@@ -4,6 +4,24 @@ import numpy.linalg as la
 from scipy.linalg import expm
 from numpy.linalg import eigvals
 from math import sqrt
+
+def get_SEA_parameters(name):
+    if(name=='Paine2017'):
+        k = 3.5e5           # spring stiffness
+        I_j = 0.014         # joint inertia
+        b_j = 0.1           # joint damping
+        I_m = 0.225         # motor inertia
+        b_m = 1.375         # motor damping
+    elif(name=='Focchi2013'):
+        N = 100             # gear ratio
+        N2 = N*N
+        k = 8.0769e3        # spring stiffness
+        I_j = 0.198         # joint inertia
+        b_j = 1.008         # joint damping
+        I_m = N2*5.72e-5    # motor inertia
+        b_m = N2*0.0015     # motor damping
+    return (k, I_j, b_j, I_m, b_m)
+        
     
 class SEA:
     ''' A series elastic actuator (SEA) with the following dynamics
