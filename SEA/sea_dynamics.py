@@ -105,6 +105,8 @@ class SEA:
         self.x = self.Ad.dot(self.x) + self.Bd.dot(tau_m)
         return self.x
         
+        # DEBUG STUFF
+        '''
         dx = self.A.dot(self.x) + self.B.dot(tau_m)
         print 'dx=', dx.T #(self.A.dot(self.x)).T, ' +B*u', (self.B.dot(tau_m)).T
         
@@ -125,7 +127,7 @@ class SEA:
         print 'ddq_j=%.2f \tddq_m=%.2f \ttau_j=%.2f'%(ddq_j, ddq_m, tau_j)
         
         self.x += self.dt*dx
-        
+        '''
      
     def qj(self):
         return self.x[0];
@@ -142,3 +144,23 @@ class SEA:
         if(self.USE_TAU_AS_STATE_VARIABLE):
             return self.x[3];
         return self.k*(self.x[3]-self.x[1])
+        
+        
+class ImpedanceControl:
+    ''' An impedance controller for a SEA:
+        tau_d = -kp*q_j - Kd*dq_j
+        tau_m = tau_d - k_tau*(tau_j-tau_d) - b_tau*dtau_j
+    '''
+    def __init__(self, k_p, k_d, k_tau, b_tau, k, use_ff_torque=True):
+        if(use_ff_torque):
+            k_qj  = -k_tau*k_p + k_tau*k - k_p  # with feedforward torque
+            k_dqj = -k_tau*k_d + b_tau*k - k_d  # with feedforward torque
+        else:
+            k_qj  = -k_tau*k_p + k_tau*k
+            k_dqj = -k_tau*k_d + b_tau*k
+        k_qm  = -k_tau*k
+        k_dqm = -b_tau*k
+        self.K = np.array([k_qj, k_dqj, k_qm, k_dqm]);
+        
+    def get_u(self, x):
+        return self.K.dot(x)
