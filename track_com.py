@@ -19,7 +19,6 @@ from estimators import Kalman, get_com_and_derivatives
 
 from estimation.momentumEKF import *
 from plot_utils import plot_gain_stability
-#import plot_utils
 import os
 import time
 

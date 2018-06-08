@@ -8,7 +8,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 
-DEFAULT_FONT_SIZE = 30;
+DEFAULT_FONT_SIZE = 20;
 DEFAULT_AXIS_FONT_SIZE = DEFAULT_FONT_SIZE;
 DEFAULT_LINE_WIDTH = 4; #13;
 DEFAULT_MARKER_SIZE = 4;
@@ -25,9 +25,6 @@ FILE_EXTENSIONS = ['png']; #'pdf']; #['png']; #,'eps'];
 FIGURES_DPI = 150;
 SHOW_FIGURES = False;
 FIGURE_PATH = './';
-LINE_WIDTH_RED = 0; # reduction of line width when plotting multiple lines on same plot
-LINE_WIDTH_MIN = 1;
-BOUNDS_COLOR = 'silver';
 
 #axes.hold           : True    # whether to clear the axes by default on
 #axes.linewidth      : 1.0     # edge linewidth
@@ -52,6 +49,7 @@ mpl.rcParams['font.size']           = DEFAULT_FONT_SIZE;
 mpl.rcParams['font.serif']          = DEFAULT_FONT_SERIF;
 mpl.rcParams['text.usetex']         = DEFAULT_TEXT_USE_TEX;
 mpl.rcParams['axes.labelsize']      = DEFAULT_AXES_LABEL_SIZE;
+mpl.rcParams['axes.grid']           = True
 mpl.rcParams['legend.fontsize']     = DEFAULT_LEGEND_FONT_SIZE;
 mpl.rcParams['legend.framealpha']   = 0.5                           # opacity of of legend frame
 mpl.rcParams['figure.facecolor']    = DEFAULT_FIGURE_FACE_COLOR;
