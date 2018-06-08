@@ -1,6 +1,10 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from IPython import embed
+
+try:
+    from IPython import embed
+except ImportError:
+    pass
 
 def plot_gain_stability(Kp_grid,Kd_grid,stab_grid):
     plt.contourf(Kp_grid,Kd_grid,stab_grid,1)

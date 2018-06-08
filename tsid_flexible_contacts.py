@@ -4,12 +4,16 @@ from pinocchio.utils import *
 #~ from pinocchio.utils import eye, zero, isapprox
 from math import pi,sqrt,cos,sin
 from quadprog import solve_qp
-from IPython import embed
 from utils_thomas import restert_viewer_server
 from logger import Logger
 from filters import FIR1LowPass
 from estimators import get_com_and_derivatives
 import matplotlib.pyplot as plt
+
+try:
+    from IPython import embed
+except ImportError:
+    pass
 
 class Empty:
     pass
@@ -43,6 +47,8 @@ class TsidFlexibleContact:
         com_j_ref = np.matrix([0.,0.]).T
         com_s_ref = np.matrix([0.,0.]).T
         self.callback_com = lambda t: (com_p_ref,com_v_ref,com_a_ref,com_j_ref,com_s_ref )
+        
+        
     def solve(self,q,v,fc,dfc,t=0.0):
         robot=self.robot
         NQ,NV,NB,RF,LF,RK,LK = self.NQ,self.NV,self.NB,self.RF,self.LF,self.RK,self.LK

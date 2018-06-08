@@ -2,10 +2,14 @@ import pinocchio as se3
 from pinocchio.robot_wrapper import RobotWrapper
 from pinocchio.utils import *
 from math import pi,sqrt
-from IPython import embed
 import matplotlib.pyplot as plt
-
 from filters import FiniteDiff
+
+try:
+    from IPython import embed
+except ImportError:
+    pass
+
 class NoisyState:
     def __init__(self,dt,robot=None, Ky=np.inf, Kz=np.inf):
         self.robot = robot

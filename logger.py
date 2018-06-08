@@ -1,6 +1,11 @@
 #!/usr/bin/env python
 # This class is used to log quantities evolution 
-from IPython import embed
+
+try:
+    from IPython import embed
+except ImportError:
+    pass
+
 class Logger:
     def __init__(self,varNames,N=100):
         self.varNames = varNames # names of the variables we want to log

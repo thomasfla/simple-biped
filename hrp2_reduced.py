@@ -2,7 +2,11 @@ import pinocchio as se3
 from pinocchio.robot_wrapper import RobotWrapper
 from pinocchio.utils import *
 from math import pi,sqrt
-from IPython import embed
+
+try:
+    from IPython import embed
+except ImportError:
+    pass
 
 class Visual:
     '''

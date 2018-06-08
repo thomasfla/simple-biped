@@ -6,7 +6,6 @@ from hrp2_reduced import Hrp2Reduced
 import time 
 from simu import Simu, ForceDict
 from quadprog import solve_qp
-from IPython import embed
 from utils_thomas import restert_viewer_server
 from logger import Logger
 from filters import FIR1LowPass, BALowPass, FiniteDiff
@@ -22,6 +21,12 @@ from estimation.momentumEKF import *
 from plot import plot_gain_stability
 import os
 import time
+
+try:
+    from IPython import embed
+except ImportError:
+    pass
+
 useViewer = False
 np.set_printoptions(precision=3)
 np.set_printoptions(linewidth=200)
@@ -49,7 +54,7 @@ PLOT_ANGULAR_MOMENTUM_DERIVATIVES = False
 dt  = 1e-3
 ndt = 1
 simulation_time = 20.0
-USE_REAL_STATE = True
+USE_REAL_STATE = True       # use real state for controller feedback
 #robot parameters
 tauc = 0.*np.array([1.,1.,1.,1.])#coulomb friction
 Ky = 23770.
@@ -60,25 +65,26 @@ Kspring = -np.diagflat([Ky,Kz,0.])     # Stiffness of the feet spring
 Bspring = -np.diagflat([By,Bz,0.])     # damping of the feet spring
 
 #Controller parameters
-fc_dtau_filter = 100. #cutoff frequency of the filter applyed to the finite differences of the torques 
-FLEXIBLE_CONTROLLER = True
-DISTURB = False
-fc      = np.inf #cutoff frequency of the Force fiter
-Ktau    = 2.0
-Kdtau   = 2.*sqrt(Ktau)*0.00 # Make it unstable ??
-Kp_post = 10
-Kp_com  = 30
-Kd_com = 2*sqrt(Kp_com)
-w_post = 0.001
+fc_dtau_filter = 100.           # cutoff frequency of the filter applyed to the finite differences of the torques 
+FLEXIBLE_CONTROLLER = True      # if True it uses the controller for flexible contacts
+DISTURB = False                 # if True disturb the motion with an external force
+fc      = np.inf                # cutoff frequency of the Force fiter
+Ktau    = 2.0                   # torque proportional feedback gain
+Kdtau   = 2.*sqrt(Ktau)*0.00    # Make it unstable ??
+Kp_post = 10                    # postural task proportional feedback gain
+Kp_com  = 30                    # com proportional feedback gain
+Kd_com = 2*sqrt(Kp_com)         # com derivative feedback gain
+if(FLEXIBLE_CONTROLLER):
+    w_post  = 0.1
+else:
+    w_post = 0.001                  # postural task weight
 FTSfilter = FIR1LowPass(np.exp(-2*np.pi*fc*dt)) #Force sensor filter
 
-
 #Grid of gains to try:
-#~ 
-Kd_coms = np.linspace(1,100,50)
-Kp_coms = np.linspace(1,500,50)
-#~ Kp_coms = [1,1]
-#~ Kd_coms = [1,100]
+#Kd_coms = np.linspace(1,100,50)
+#Kp_coms = np.linspace(1,500,50)
+Kp_coms = [1,1]
+Kd_coms = [1,100]
 
 #Simulator
 simu = Simu(robot,dt=dt,ndt=ndt)
@@ -87,6 +93,7 @@ simu.Krf = Kspring
 simu.Klf = Kspring
 simu.Brf = Bspring
 simu.Blf = Bspring
+# size of configuration vector (NQ), velocity vector (NV), number of bodies (NB)
 NQ,NV,NB,RF,LF,RK,LK = simu.NQ,simu.NV,simu.NB,simu.RF,simu.LF,simu.RK,simu.LK
 
 #initial state
@@ -105,7 +112,7 @@ dtau_fd_filter = FiniteDiff(dt)
 dtau_lp_filter = FIR1LowPass(np.exp(-2*np.pi*fc_dtau_filter*dt)) #Force sensor filter
 
 
-#Noise applied on the state to get a simulated measurment
+#Noise applied on the state to get a simulated measurement
 ns = NoisyState(dt,robot,Ky,Kz)
 
 # noise standard deviation
@@ -216,8 +223,6 @@ if FLEXIBLE_CONTROLLER:
     Kj_com = 1.40e+02
     #~ Kp_com,Kd_com,Ka_com,Kj_com = 2.4e+09, 5.0e+07, 3.5e+05, 1.0e+03
     #~ Kp_com,Kd_com,Ka_com,Kj_com = 17160.0,  6026.0,   791.0,    46.  
-    Kp_post = 10
-    w_post  = 0.1
     tsid=TsidFlexibleContact(robot,Ky,Kz,w_post,Kp_post,Kp_com, Kd_com, Ka_com, Kj_com, estimator)
 else:
     tsid=Tsid(robot,Ky,Kz,Kp_post,Kp_com,w_post)
@@ -298,14 +303,15 @@ def traj_sinusoid(t,start_position,stop_position,travel_time):
     j =   B*B*B*A*np.sin(B*t)
     s = B*B*B*B*A*np.cos(B*t) 
     return p,v,a,j,s
+    
 # check derivatives
-eps = 1e-8
-p1,v1,a1,j1,s1 =  traj_sinusoid(0.123   ,1.1,2.2,3.3)
-p2,v2,a2,j2,s2 =  traj_sinusoid(0.123+eps,1.1,2.2,3.3)
-assert isapprox(v1,(p2-p1)/eps)
-assert isapprox(a1,(v2-v1)/eps)
-assert isapprox(j1,(a2-a1)/eps)
-assert isapprox(s1,(j2-j1)/eps)
+#eps = 1e-8
+#p1,v1,a1,j1,s1 =  traj_sinusoid(0.123   ,1.1,2.2,3.3)
+#p2,v2,a2,j2,s2 =  traj_sinusoid(0.123+eps,1.1,2.2,3.3)
+#assert isapprox(v1,(p2-p1)/eps)
+#assert isapprox(a1,(v2-v1)/eps)
+#assert isapprox(j1,(a2-a1)/eps)
+#assert isapprox(s1,(j2-j1)/eps)
 
 def controller(q,v,f,df):
     ''' Take the sensor data (position, velocity and contact forces) 
@@ -313,10 +319,8 @@ def controller(q,v,f,df):
     t=log_index*simu.dt
     #filter forces
     f_filtered = FTSfilter.update(f)
-    if FLEXIBLE_CONTROLLER:
-        tsid.solve(q,v,f,df,t)
-    else:
-        tsid.solve(q,v,f,df,t)
+    tsid.solve(q,v,f,df,t)
+
     dv      = tsid.data.dv
     tau_des = tsid.data.tau
     log_q[log_index] = q.A1
@@ -430,60 +434,59 @@ tsid.callback_com=com_const
 
 
 #control the robot with an inverse dynamic:
-if 1:
-    control = controller
-    q,v,f,df = q0.copy(), v0.copy(), f0.copy(), df0.copy()
-    q,v = loop(q,v,f,df,log_size)
-    result = ""
-    KpKd = []
-    stab_grid = np.zeros([len(Kp_coms),len(Kd_coms)])+np.nan
-    Kp_grid = np.zeros([len(Kp_coms),len(Kd_coms)])+np.nan
-    Kd_grid = np.zeros([len(Kp_coms),len(Kd_coms)])+np.nan
-    i=0
-    for Kp_com in Kp_coms:
-        j=0
-        for Kd_com in Kd_coms:
-            #change controller gains
-            tsid.Kp_com = Kp_com
-            tsid.Kd_com = Kd_com
-            
-            #reset all entity with internal states
-            simu.reset()
-            FTSfilter.reset()
-            dtau_fd_filter.reset()
-            dtau_lp_filter.reset()
-            
-            #start from initial state
-            q,v,f,df = q0.copy(), v0.copy(), f0.copy(), df0.copy()
-            isstable=True
-            #simulate and test stability
-            try:
-                q,v = loop(q,v,f,df,log_size)
-            except ValueError:
-                isstable=False
-            print "Kp_com={}, Kd_com={}, Stable? {}".format(Kp_com,Kd_com,isstable)
-            KpKd.append([Kp_com,Kd_com])
-            stab_grid[i,j] = isstable
-            Kp_grid[i,j] = Kp_com
-            Kd_grid[i,j] = Kd_com
-            
-            if isstable:
-                result += "*"
-            else:
-                result += "-"
-            print result
-            j+=1
-        result += "\n"
-        i+=1
-    if i !=0:
-        #save the stability region plot and data
-        num = int(time.time()) #simple unique increasing timestamp
-        outDir = "./data/{}/".format(num)
-        os.makedirs(outDir)
-        np.savez(outDir + "stab.npz", Kd_grid=Kd_grid, Kp_grid=Kp_grid, stab_grid=stab_grid)
-        plot_gain_stability(Kd_grid,Kp_grid,stab_grid)
-        plt.savefig(outDir + "stab.png")
-        plt.show()
+control = controller
+q,v,f,df = q0.copy(), v0.copy(), f0.copy(), df0.copy()
+q,v = loop(q,v,f,df,log_size)
+result = ""
+KpKd = []
+stab_grid = np.zeros([len(Kp_coms),len(Kd_coms)])+np.nan
+Kp_grid = np.zeros([len(Kp_coms),len(Kd_coms)])+np.nan
+Kd_grid = np.zeros([len(Kp_coms),len(Kd_coms)])+np.nan
+i=0
+for Kp_com in Kp_coms:
+    j=0
+    for Kd_com in Kd_coms:
+        #change controller gains
+        tsid.Kp_com = Kp_com
+        tsid.Kd_com = Kd_com
+        
+        #reset all entity with internal states
+        simu.reset()
+        FTSfilter.reset()
+        dtau_fd_filter.reset()
+        dtau_lp_filter.reset()
+        
+        #start from initial state
+        q,v,f,df = q0.copy(), v0.copy(), f0.copy(), df0.copy()
+        isstable=True
+        #simulate and test stability
+        try:
+            q,v = loop(q,v,f,df,log_size)
+        except ValueError:
+            isstable=False
+        print "Kp_com={}, Kd_com={}, Stable? {}".format(Kp_com,Kd_com,isstable)
+        KpKd.append([Kp_com,Kd_com])
+        stab_grid[i,j] = isstable
+        Kp_grid[i,j] = Kp_com
+        Kd_grid[i,j] = Kd_com
+        
+        if isstable:
+            result += "*"
+        else:
+            result += "-"
+        print result
+        j+=1
+    result += "\n"
+    i+=1
+if i !=0:
+    #save the stability region plot and data
+    num = int(time.time()) #simple unique increasing timestamp
+    outDir = "./data/{}/".format(num)
+    os.makedirs(outDir)
+    np.savez(outDir + "stab.npz", Kd_grid=Kd_grid, Kp_grid=Kp_grid, stab_grid=stab_grid)
+    plot_gain_stability(Kd_grid,Kp_grid,stab_grid)
+    plt.savefig(outDir + "stab.png")
+    plt.show()
 
 if PLOT_COM_AND_FORCES:
     ax1 = plt.subplot(311)
@@ -621,6 +624,3 @@ plt.show()
 #~ plt.legend()
 #~ plt.show()
 embed()
-
-
-

@@ -2,9 +2,13 @@ import pinocchio as se3
 from pinocchio.robot_wrapper import RobotWrapper
 from pinocchio.utils import *
 from math import pi,sqrt
-from IPython import embed
 import matplotlib.pyplot as plt
 import numpy as np
+
+try:
+    from IPython import embed
+except ImportError:
+    pass
 
 class GenericEstimator:
     def update(self, c, dc, ddc):
