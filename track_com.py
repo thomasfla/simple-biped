@@ -18,7 +18,8 @@ from noise_utils import NoisyState
 from estimators import Kalman, get_com_and_derivatives
 
 from estimation.momentumEKF import *
-from plot import plot_gain_stability
+from plot_utils import plot_gain_stability
+#import plot_utils
 import os
 import time
 
@@ -52,9 +53,9 @@ PLOT_ANGULAR_MOMENTUM_DERIVATIVES = False
    
 #Simulation parameters
 dt  = 1e-3
-ndt = 1
-simulation_time = 20.0
-USE_REAL_STATE = True       # use real state for controller feedback
+ndt = 5
+simulation_time = 3.0
+USE_REAL_STATE = 0       # use real state for controller feedback
 #robot parameters
 tauc = 0.*np.array([1.,1.,1.,1.])#coulomb friction
 Ky = 23770.
@@ -67,7 +68,7 @@ Bspring = -np.diagflat([By,Bz,0.])     # damping of the feet spring
 #Controller parameters
 fc_dtau_filter = 100.           # cutoff frequency of the filter applyed to the finite differences of the torques 
 FLEXIBLE_CONTROLLER = True      # if True it uses the controller for flexible contacts
-DISTURB = False                 # if True disturb the motion with an external force
+DISTURB = 1                     # if True disturb the motion with an external force
 fc      = np.inf                # cutoff frequency of the Force fiter
 Ktau    = 2.0                   # torque proportional feedback gain
 Kdtau   = 2.*sqrt(Ktau)*0.00    # Make it unstable ??
@@ -83,8 +84,8 @@ FTSfilter = FIR1LowPass(np.exp(-2*np.pi*fc*dt)) #Force sensor filter
 #Grid of gains to try:
 #Kd_coms = np.linspace(1,100,50)
 #Kp_coms = np.linspace(1,500,50)
-Kp_coms = [1,1]
-Kd_coms = [1,100]
+Kp_coms = []
+Kd_coms = []
 
 #Simulator
 simu = Simu(robot,dt=dt,ndt=ndt)
@@ -387,8 +388,8 @@ def controller(q,v,f,df):
     #check that the state does'nt go crazy
     if np.linalg.norm(tsid.data.com_p_err) > 0.1:
         raise ValueError("COM error > 0.1")
-    if np.linalg.norm(tsid.data.f) > 350:
-        raise ValueError("Forces > 350")
+    if np.linalg.norm(tsid.data.f) > 500:
+        raise ValueError("Forces > 500")
     if np.linalg.norm(q) > 10:
         raise ValueError("q > 10")
         
@@ -594,18 +595,17 @@ if PLOT_ANGULAR_MOMENTUM_DERIVATIVES:
 #~ plt.plot(log_a_lf_jac, label = "a_lf_jac")
 #~ plt.plot(log_a_rf_jac, label = "a_rf_jac")
 
-log_a_lf_fd[0]=np.nan
-log_a_rf_fd[0]=np.nan
-plt.plot(log_a_lf_fd[:,:2], label = "log_a_lf_fd")
-plt.plot(log_a_lf_jac[:,:2], label = "a_lf_jac")
-plt.plot(log_a_lf_des, label = "log_a_lf_des")
-#~ 
-plt.legend()
-plt.show()
+#log_a_lf_fd[0]=np.nan
+#log_a_rf_fd[0]=np.nan
+#plt.plot(log_a_lf_fd[:,:2], label = "log_a_lf_fd")
+#plt.plot(log_a_lf_jac[:,:2], label = "a_lf_jac")
+#plt.plot(log_a_lf_des, label = "log_a_lf_des")
+#plt.legend()
+#plt.show()
 
-plt.plot(log_dv_simu[:] - log_dv_tsid[:], label = "dv_simu-dv_tsid")
-plt.legend()
-plt.show()
+#plt.plot(log_dv_simu[:] - log_dv_tsid[:], label = "dv_simu-dv_tsid")
+#plt.legend()
+#plt.show()
 
 #~ plt.plot(log_t,log_v_lf,label="lf vel" + axe_label[i])
 #~ plt.plot(log_t,log_v_rf,label="rf vel" + axe_label[i])
@@ -623,4 +623,7 @@ plt.show()
 #~ plt.plot(log_t,1+log_dtau_est,label="filtered finite differences of tau")
 #~ plt.legend()
 #~ plt.show()
-embed()
+try:
+    embed()
+except:
+    pass;
