@@ -113,8 +113,10 @@ class Simu:
         #~ print 'SIMULATOR post integration'
         #~ embed()
         return q,v
+        
     def reset(self):
         self.first_iter = True
+        
     def compute_f_df_from_q_v(self,q,v, compute_data = True):
         '''Compute the contact forces and them derivative via q,v and the elastic model'''
         robot = self.robot

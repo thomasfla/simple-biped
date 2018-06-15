@@ -5,7 +5,6 @@ from pinocchio.utils import *
 from math import pi,sqrt,cos,sin
 from quadprog import solve_qp
 from utils_thomas import restert_viewer_server
-from logger import Logger
 from filters import FIR1LowPass
 from estimators import get_com_and_derivatives
 import matplotlib.pyplot as plt
