@@ -4,20 +4,19 @@ from math import pi,sqrt
 from hrp2_reduced import Hrp2Reduced
 import time 
 from simu import Simu, ForceDict
-from utils_thomas import restert_viewer_server, traj_sinusoid, finite_diff
-from logger import RaiLogger
-from filters import FIR1LowPass, BALowPass, FiniteDiff
+from utils.utils_thomas import restert_viewer_server, traj_sinusoid, finite_diff
+from utils.logger import RaiLogger
+from utils.filters import FIR1LowPass, BALowPass, FiniteDiff
 import matplotlib.pyplot as plt
 from tsid import Tsid
 from tsid_flexible_contacts import TsidFlexibleContact
 from path import pkg, urdf 
-from noise_utils import NoisyState
+from utils.noise_utils import NoisyState
 from estimators import Kalman, get_com_and_derivatives
 
 from estimation.momentumEKF import *
-from plot_utils import plot_gain_stability
+from utils.plot_utils import plot_gain_stability
 import os
-import time
 
 try:
     from IPython import embed
@@ -140,8 +139,6 @@ COM_REF_START = [0.0, 0.53]
 COM_REF_END   = [0.0, 0.53]
 COM_TRAJ_TIME = 2.0
 
-FTSfilter = FIR1LowPass(np.exp(-2*np.pi*fc*dt)) #Force sensor filter
-
 #Grid of gains to try:
 Kp_coms = []    # np.linspace(1,100,50)
 Kd_coms = []    # np.linspace(1,500,50)
@@ -167,7 +164,8 @@ c0,dc0,ddc0,dddc0 = get_com_and_derivatives(robot,q0,v0,f0,df0)
 l0 = 0
 
 dtau_fd_filter = FiniteDiff(dt)
-dtau_lp_filter = FIR1LowPass(np.exp(-2*np.pi*fc_dtau_filter*dt)) #Force sensor filter
+dtau_lp_filter = FIR1LowPass(np.exp(-2*np.pi*fc_dtau_filter*dt)) # Force sensor filter
+FTSfilter      = FIR1LowPass(np.exp(-2*np.pi*fc*dt))             # Force sensor filter
 
 #Noise applied on the state to get a simulated measurement
 ns = NoisyState(dt,robot,Ky,Kz)

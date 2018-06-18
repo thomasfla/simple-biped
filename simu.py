@@ -4,7 +4,7 @@ from pinocchio.utils import *
 from math import pi,sqrt,cos,sin
 from hrp2_reduced import Hrp2Reduced
 import time 
-from utils_thomas import restert_viewer_server
+from utils.utils_thomas import restert_viewer_server
 
 try:
     from IPython import embed

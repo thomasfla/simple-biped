@@ -1,5 +1,4 @@
 import pinocchio as se3
-from pinocchio.robot_wrapper import RobotWrapper
 from pinocchio.utils import *
 from math import pi,sqrt
 import matplotlib.pyplot as plt
@@ -17,7 +16,7 @@ class GenericEstimator:
 
 class Kalman(GenericEstimator):
     def __init__(self,dt, sigma_c, sigma_dc, sigma_ddc, sigma_process_noise, c0, dc0, ddc0, dddc0, dim=2):
-        from LQG_utils import dkalman
+        from utils.LQG_utils import dkalman
         self.dim = dim
         self.A = np.matrix([[1, dt, dt*dt/2, dt*dt*dt/6],
                             [0, 1,  dt,      dt*dt/2   ],

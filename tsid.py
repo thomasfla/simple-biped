@@ -1,10 +1,7 @@
 import pinocchio as se3
-from pinocchio.robot_wrapper import RobotWrapper
 from pinocchio.utils import *
 from math import pi,sqrt,cos,sin
 from quadprog import solve_qp
-from utils_thomas import restert_viewer_server
-from filters import FIR1LowPass
 import matplotlib.pyplot as plt
 
 try:
