@@ -41,6 +41,7 @@ class Hrp2Reduced:
         self.useViewer = useViewer
         self.loadHRP(urdf,pkgs,loadModel)
         self.buildModel()
+        
     def loadHRP(self,urdf,pkgs,loadModel):
         '''Internal: load HRP-2 model from URDF.'''
         robot = RobotWrapper( urdf, pkgs, root_joint=se3.JointModelFreeFlyer() )
@@ -216,6 +217,7 @@ class Hrp2Reduced:
         Jr2 = rotRF.action * Jr
         return Jl2,Jr2 #return the rotated jacobian (WORLD)
         #~ return Jl,Jr # (LOCAL)
+        
     def get_Mlf_Mrf(self, q, update=True):
         if update==True:
             se3.forwardKinematics(self.model,self.data,q)
@@ -223,6 +225,7 @@ class Hrp2Reduced:
         oMlf = self.data.oMf[self.LF].copy()
         oMrf = self.data.oMf[self.RF].copy()
         return oMlf, oMrf
+        
     def get_classic_alf_arf(self,q,v,a,update=True):
         if update==True:
             se3.forwardKinematics(self.model,self.data,q,v,a)
@@ -286,6 +289,19 @@ class Hrp2Reduced:
         robotInertia = Jam[0,2] 
         am = (Jam*v).A1[0]
         return am
+        
+    def get_com_and_derivatives(self, q, v, f, df, recompute=True):
+        '''Compute the CoM position, velocity, acceleration and jerk from 
+           q, v, contact forces and deritavives of the contact forces'''
+        if recompute:
+            se3.centerOfMass(self.model,self.data,q,v,zero(self.model.nv))
+        m = self.data.mass[0]
+        X = np.hstack([np.eye(2),np.eye(2)])
+        com   = self.data.com[0][1:]
+        com_v = self.data.vcom[0][1:]
+        com_a = (1/m)*X*f + self.model.gravity.linear[1:]
+        com_j = (1/m)*X*df
+        return com, com_v, com_a, com_j
         
     def display(self,q):
         se3.forwardKinematics(self.model,self.data,q)

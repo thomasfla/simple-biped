@@ -12,8 +12,7 @@ from tsid import Tsid
 from tsid_flexible_contacts import TsidFlexibleContact
 from path import pkg, urdf 
 from utils.noise_utils import NoisyState
-from estimators import Kalman, get_com_and_derivatives
-
+from estimation.estimators import Kalman
 from estimation.momentumEKF import *
 from utils.plot_utils import plot_gain_stability
 import os
@@ -160,7 +159,7 @@ se3.computeAllTerms(robot.model,robot.data,q0,v0)
 m = robot.data.mass[0] 
 q0[1]-=0.5*m*g/Kz
 f0,df0 = simu.compute_f_df_from_q_v(q0,v0)
-c0,dc0,ddc0,dddc0 = get_com_and_derivatives(robot,q0,v0,f0,df0)
+c0,dc0,ddc0,dddc0 = robot.get_com_and_derivatives(q0,v0,f0,df0)
 l0 = 0
 
 dtau_fd_filter = FiniteDiff(dt)
@@ -254,7 +253,7 @@ def loop(q, v, f, df, niter, ndt=None, dt=None, tsleep=.9, fdisplay=100):
             q_noisy,v_noisy,f_noisy,df_noisy = ns.get_noisy_state(q,v,f,df)
         
         #Run the centroidal estimation (not used yet)
-        com_noisy, com_v_noisy, com_a_noisy, com_j_noisy = get_com_and_derivatives(robot,q_noisy,v_noisy,f_noisy,df_noisy)
+        com_noisy, com_v_noisy, com_a_noisy, com_j_noisy = robot.get_com_and_derivatives(q_noisy,v_noisy,f_noisy,df_noisy)
         l_noisy = robot.get_angularMomentum(q_noisy,v_noisy)
         # centroidalEstimator.predict_update(com_noisy.A1, com_v_noisy.A1, np.array([l_noisy]), f_noisy, p, ddf)
         
@@ -264,7 +263,7 @@ def loop(q, v, f, df, niter, ndt=None, dt=None, tsleep=.9, fdisplay=100):
 
         # log data        
         log_t[log_index] = log_index*simu.dt
-        com_p, com_v, com_a, com_j = get_com_and_derivatives(robot,q,v,f,df)
+        com_p, com_v, com_a, com_j = robot.get_com_and_derivatives(q,v,f,df)
         lgr.log_all(locals())
         
         lgr.add_vector((simu.vlf-last_vlf).A1/simu.dt, 'a_lf_fd')   # feet accelerations via finite differences

@@ -15,6 +15,7 @@ class GenericEstimator:
         pass
 
 class Kalman(GenericEstimator):
+    
     def __init__(self,dt, sigma_c, sigma_dc, sigma_ddc, sigma_process_noise, c0, dc0, ddc0, dddc0, dim=2):
         from utils.LQG_utils import dkalman
         self.dim = dim
@@ -43,6 +44,7 @@ class Kalman(GenericEstimator):
                                      [ddc0 ],
                                      [dddc0]])
         (self.L,S,eigValsObs)  = dkalman(self.A, self.C, self.W, self.V)
+        
     def update(self, c, dc, ddc, u_ddddc=np.matrix([0.,0.])):
         A = self.A
         B = self.B
@@ -88,10 +90,6 @@ class Kalman(GenericEstimator):
         
         
         
-        
-        
-        
-        
 class FiniteDifferences(GenericEstimator):
     #This estimator simply filters c, dc, ddc
     #and compute dddc from finite differences + filtering
@@ -103,6 +101,7 @@ class FiniteDifferences(GenericEstimator):
         self.acc_filter  = FIR1LowPass(np.exp(-2*np.pi*fc_acc*dt))
         self.jerk_filter = FIR1LowPass(np.exp(-2*np.pi*fc_jerk*dt))
         self.isFirstIter = True
+        
     def update(self, c, dc, ddc, dummy=None):
         c_est = self.pos_filter.update(c)
         dc_est = self.vel_filter.update(dc)
@@ -218,19 +217,3 @@ if __name__ == '__main__':
     plt.plot(log_j_gt[:,axis]  , label="Jerk Ground Truth")
     plt.legend()
     plt.show()
-    
-def get_com_and_derivatives(robot, q,v,f,df, recompute=True):
-    '''Compute the CoM position, velocity, acceleration and jerk from 
-       q, v, contact forces and deritavives of the contact forces'''
-    if recompute:
-        se3.centerOfMass(robot.model,robot.data,q,v,zero(robot.model.nv))
-    m = robot.data.mass[0]
-    X = np.hstack([np.eye(2),np.eye(2)])
-    com   = robot.data.com[0][1:]
-    com_v = robot.data.vcom[0][1:]
-    com_a = (1/m)*X*f + robot.model.gravity.linear[1:]
-    com_j = (1/m)*X*df
-    return com, com_v, com_a, com_j
-    
-    
-    
