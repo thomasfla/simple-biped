@@ -311,12 +311,13 @@ class Hrp2Reduced:
                 self.viewer.refresh()
 
 if __name__ == '__main__':
-    from utils_thomas import restert_viewer_server
     import time
+    from path import pkg, urdf 
     useViewer = False
     if useViewer: 
+        from utils.utils_thomas import restert_viewer_server
         restert_viewer_server()
-    from path import pkg, urdf 
+    
     robot = Hrp2Reduced(urdf,[pkg],useViewer=useViewer)
     robot.display(robot.q0)
     np.set_printoptions(precision=3)
@@ -434,7 +435,10 @@ if __name__ == '__main__':
     assert isapprox((Jl*a)[1:3] + driftLF.vector[1:3] , alf.vector[1:3])
 
     Jam = robot.get_angularMomentumJacobian(q,v)
-    embed()
+    try:
+        embed()
+    except:
+        pass
     
     for i in range(0,8):
         for p in np.linspace(0,1,50).tolist()+np.linspace(1,0,50).tolist():
