@@ -1,16 +1,21 @@
 import pinocchio as se3
-from pinocchio.robot_wrapper import RobotWrapper
 from pinocchio.utils import *
 from math import pi,sqrt,cos,sin
 from hrp2_reduced import Hrp2Reduced
 import time 
 from simu import Simu
-from quadprog import solve_qp
-from IPython import embed
-pkg = '/opt/openrobots/share/hrp2-14/'
-urdf = '/home/tflayols/devel/openrobots/src/sot-torque-control/hrp2-torque-control/share/metapod/data/hrp2_14/hrp2_14.urdf'
+
+try:
+    from IPython import embed
+except:
+    pass
+
+#pkg = '/opt/openrobots/share/hrp2-14/'
+#urdf = '/home/tflayols/devel/openrobots/src/sot-torque-control/hrp2-torque-control/share/metapod/data/hrp2_14/hrp2_14.urdf'
 #~ pkg = '/home/nmansard/src/sot_versions/groovy/ros/stacks/hrp2/'
 #~ urdf = '/home/nmansard/src/pinocchio/pinocchio/models/hrp2014.urdf'
+from path import pkg, urdf 
+
 robot = Hrp2Reduced(urdf,[pkg],loadModel=True)
 robot.display(robot.q0)
 robot.viewer.setCameraTransform(0,[1.9154722690582275,
@@ -63,4 +68,7 @@ Jcom = robot.data.Jcom
 se3.centerOfMass(robot.model,robot.data,q,v,zero(NV))
 acom = robot.data.acom[0]
 
-embed()
+try:
+    embed()
+except:
+    pass
