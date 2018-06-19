@@ -144,7 +144,29 @@ class MomentumEKF(ExtendedKalmanFilter):
 
             # fill rows of contact forces
             self.F[i_f+i*nl: i_f+(i+1)*nl, idf+i*nl: idf+(i+1)*nl] = dt_I
+    
+    def get_state(self):
+        '''
+        Get the state vector, defined as:
+            x = (c, dc, l, {f}, {df})
+        '''
+        # define shortcuts
+        nl  = self.n_lin
+        na  = self.n_ang
+        nf  = self.n_f
+        ic  = self.i_c
+        idc = self.i_dc
+        il  = self.i_l
+        i_f = self.i_f
+        idf = self.i_df
         
+        # unpack state
+        c  = self.x[ic:ic+nl]
+        dc = self.x[idc:idc+nl]   
+        l  = self.x[il:il+na]     
+        f  = self.x[i_f:i_f+nf*nl]
+        df = self.x[idf:idf+nf*nl]
+        return (c, dc, l, f, df)
             
     def update_transition_matrix(self, p):
         ''' Update the transition matrix F
