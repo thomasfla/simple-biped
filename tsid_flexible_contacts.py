@@ -2,7 +2,6 @@ import pinocchio as se3
 from pinocchio.utils import *
 from math import pi,sqrt,cos,sin
 from quadprog import solve_qp
-from estimators import get_com_and_derivatives
 import matplotlib.pyplot as plt
 
 try:
@@ -50,9 +49,7 @@ class TsidFlexibleContact:
         w_post = self.w_post
         Kp_post, Kd_post = self.Kp_post, self.Kd_post
         Kp_com,  Kd_com, Ka_com, Kj_com  = self.Kp_com, self.Kd_com, self.Ka_com, self.Kj_com
-        Ky = self.Ky 
-        Kz = self.Kz 
-        callback_com = self.callback_com
+        Ky, Kz = self.Ky, self.Kz
 
         se3.computeAllTerms(robot.model,robot.data,q,v)
         se3.framesKinematics(robot.model,robot.data,q)
@@ -76,8 +73,7 @@ class TsidFlexibleContact:
         '''com_s_des -> ddf_des -> feet_a_des'''        
         
         #get measurment of center of mass and derivatives, (jerk  should not be used, sincd we don't really have a measurment of df)
-        com_mes, com_v_mes, com_a_mes, com_j_mes = get_com_and_derivatives(robot,q,v,fc,dfc)
-        
+        com_mes, com_v_mes, com_a_mes, com_j_mes = robot.get_com_and_derivatives(q,v,fc,dfc)        
         if self.estimator == None:
             #take the measurment state as estimate, assume jerk is measured by df
             com_est, com_v_est, com_a_est, com_j_est = com_mes, com_v_mes, com_a_mes, com_j_mes
@@ -90,7 +86,7 @@ class TsidFlexibleContact:
         Mlf, Mrf = robot.get_Mlf_Mrf(q, False) 
  
         # ref
-        com_p_ref, com_v_ref, com_a_ref, com_j_ref, com_s_ref = callback_com(t)
+        com_p_ref, com_v_ref, com_a_ref, com_j_ref, com_s_ref = self.callback_com(t)
         
         # errors
         com_p_err = com_est   - com_p_ref
@@ -98,18 +94,20 @@ class TsidFlexibleContact:
         com_a_err = com_a_est - com_a_ref
         com_j_err = com_j_est - com_j_ref
 
-        Kspring = -np.matrix(np.diagflat([Ky,Kz,Ky,Kz]))   # Stiffness of the feet spring
-        Kinv = np.linalg.inv(Kspring)
+
 
         com_s_des = -Kp_com*com_p_err -Kd_com*com_v_err -Ka_com*com_a_err -Kj_com*com_j_err +com_s_ref
         #~ com_s_des = -100 * np.matrix([1,1]).T #FOR TEST 
         #~ com_s_des = com_s_ref #FOR TEST only the FeedForward3
-        X = np.hstack([np.eye(2),np.eye(2)])
-        X_pinv = np.linalg.pinv(X)
-        ddf_des = m*X_pinv*com_s_des
-        feet_a_des = Kinv*ddf_des # This quantity is computed for debuging, but the task is now formulated in the centroidal space
+        
+#        Kspring = -np.matrix(np.diagflat([Ky,Kz,Ky,Kz]))   # Stiffness of the feet spring
+#        Kinv = np.linalg.inv(Kspring)
+#        X = np.hstack([np.eye(2),np.eye(2)])
+#        X_pinv = np.linalg.pinv(X)
+#        ddf_des = m*X_pinv*com_s_des
+#        feet_a_des = Kinv*ddf_des # This quantity is computed for debuging, but the task is now formulated in the centroidal space
 
-        Jc = np.vstack([Jl[1:3],Jr[1:3]])    # (4, 7)
+#        Jc = np.vstack([Jl[1:3],Jr[1:3]])    # (4, 7)
 
         driftLF,driftRF = robot.get_driftLF_driftRF_world(q,v, False)
         dJcdq = np.vstack([driftLF.vector[1:3],driftRF.vector[1:3]])
@@ -121,13 +119,9 @@ class TsidFlexibleContact:
         cy, cz     = com_est.A1
         dcy, dcz   = com_v_est.A1
         ddcy, ddcz = com_a_est.A1  
-        dfyl, dfzl, dfyr, dfzr = dfc.A1   #Todo express it via com jerk, impossible ??
+        dfyl, dfzl, dfyr, dfzr = dfc.A1
 
-        dpyl = -dfyl/Ky
-        dpzl = -dfzl/Kz
-        dpyr = -dfyr/Ky
-        dpzr = -dfzr/Kz
-
+        dpyl, dpzl, dpyr, dpzr = -dfyl/Ky, -dfzl/Kz, -dfyr/Ky, -dfzr/Kz
         Xl = np.matrix([ 1./-Ky*fzl - (pzl - cz),
                         -1./-Kz*fyl + (pyl - cy),
                          1./-Ky*fzr - (pzr - cz),
@@ -141,17 +135,13 @@ class TsidFlexibleContact:
         # iam is the integral of the angular momentum approximated by the base orientation.
         # am dam ddam and dddam are the angular momentum derivatives 
         
-        K_iam  = Kp_com # take the same gains as the CoM
-        K_am   = Kd_com
-        K_dam  = Ka_com
-        K_ddam = Kj_com
-        
+        # take the same gains as the CoM
+        K_iam, K_am, K_dam, K_ddam  = Kp_com, Kd_com, Ka_com, Kj_com
         iam_ref, am_ref, dam_ref, ddam_ref, dddam_ref = 0.,0.,0.,0.,0.
-        
         Jam = robot.get_angularMomentumJacobian(q,v)
         robotInertia = Jam[0,2] 
         
-        #measurments
+        # measurements
         theta = np.arctan2(q[3],q[2])
         iam = robotInertia * theta
         am = (Jam*v).A1[0] # Jam*v 3d ???  #todo use get_angularMomentum
@@ -168,20 +158,17 @@ class TsidFlexibleContact:
         u_des = np.vstack([com_s_des,dddam_des]) # CoM + Angular Momentum
         X = np.vstack([Xc, Xl])                  # CoM + Angular Momentum
         N = np.vstack([Nc, Nl])                  # CoM + Angular Momentum
-        #~ u_des = com_s_des #CoM only
-        #~ X = Xc            #CoM only
-        #~ N = Nc            #CoM only        
         
+        Kspring = -np.matrix(np.diagflat([Ky,Kz,Ky,Kz]))   # Stiffness of the feet spring
         A_feet = X*Kspring*Jc
         b_feet = u_des - N - X*Kspring*dJcdq
-        
         A_feet = np.hstack([A_feet ,np.zeros([X.shape[0],4+4])]) # feed zero for the variable not in the problem (forces and torques)
 
         #posture task  *************************************************
 
         #~ Jpost = np.hstack([np.zeros([4,3]),np.eye(4)])
         Jpost = np.eye(7)
-        post_p_ref = robot.q0 #[4:] #only the actuated part !
+        post_p_ref = robot.q0
         post_v_ref = np.matrix([0.,0.,0.,0.,0.,0.,0.]).T
         post_a_ref = np.matrix([0.,0.,0.,0.,0.,0.,0.]).T
         post_p_err = np.matrix([0.,0.,0.,0.,0.,0.,0.]).T
@@ -191,7 +178,7 @@ class TsidFlexibleContact:
         post_p_err[3:] = q[4:] - post_p_ref[4:] # Actuation error
         post_v_err = v - post_v_ref
 
-        post_a_des = -Kp_post*post_p_err - Kd_post*post_v_err
+        post_a_des = post_a_ref - Kp_post*post_p_err - Kd_post*post_v_err
 
         z4 = np.matrix(np.zeros([7,4+4]))
         A_post  = w_post*np.hstack([Jpost,z4]) 
@@ -232,20 +219,15 @@ class TsidFlexibleContact:
             y_PINV = np.vstack([dv_PINV,f_PINV,tau_PINV]).A1
             assert isapprox(y_PINV,y_QP)
 
-        dv_QP  = np.matrix(y_QP[:7]   ).T
-        f_QP   = np.matrix(y_QP[7:7+4]).T
-        tau_QP = np.matrix(y_QP[7+4:] ).T
-        
-        dv  = dv_QP
-        f   = f_QP
-        tau = tau_QP
-        #~ dv  = dv_PINV
-        #~ f   = f_PINV
-        #~ tau = tau_PINV
-        
+        dv  = np.matrix(y_QP[:7]   ).T
+        f   = np.matrix(y_QP[7:7+4]).T
+        tau = np.matrix(y_QP[7+4:] ).T
+                
         #populate results
+        feet_a_des = Jc*dv + dJcdq
         self.data.lf_a_des = feet_a_des[:2]
         self.data.rf_a_des = feet_a_des[2:]
+        
         self.data.com_p_mes  = com_mes.A1
         self.data.com_v_mes  = com_v_mes.A1
         self.data.com_a_mes  = com_a_mes.A1
@@ -290,7 +272,6 @@ class TsidFlexibleContact:
 if __name__ == "__main__":
     '''benchmark TSID'''
     from hrp2_reduced import Hrp2Reduced
-    from IPython import embed
     import time
     from path import pkg, urdf 
     np.set_printoptions(precision=3)
@@ -302,4 +283,8 @@ if __name__ == "__main__":
     for i in range(niter):
         tsid.solve(robot.q0,np.zeros([7,1]),np.matrix([0.,0.,0.,0.]).T,np.matrix([0.,0.,0.,0.]).T)
     print 'TSID average time = %.5f ms' % ((time.time()-t0)/(1e-3*niter)) #0.53ms
-    embed()
+    
+    try:
+        embed()
+    except:
+        pass
