@@ -126,9 +126,36 @@ class RaiLogger(DataCollector):
     
     
     def log_all(self, local_dict=None):
+        # at the first iteration update the name of the variables used for logging
+        # based on the size of the associated vectors
+        if(self.i==0):
+            # create a new list to avoid modifying the list while iterating over it
+            new_log_var_name_list = []
+            
+            for (obj, obj_var_names, log_var_names, var_types) in zip(self.obj_list, self.obj_var_names_list, self.log_var_name_list, self.var_types_list):
+                new_log_var_names = []
+                for (obj_var_name, log_var_name, var_type) in zip(obj_var_names, log_var_names, var_types):
+                    if(obj is None):
+                        var = local_dict[obj_var_name]
+                    else:
+                        var = obj.__dict__[obj_var_name]
+                    
+                    # by default assume the log-var-name will not change
+                    new_log_var_name = log_var_name
+                    
+                    if(var_type=='vector' and len(log_var_name) != var.size):
+                        # in case it was not possible to access the variable when auto_log_variables was called
+                        vn = log_var_name[0]
+                        new_log_var_name = [vn+'_'+str(i) for i in range(self._vector_size(var))]
+#                        print "log_var_name for vector variable %s (obj_var_name=%s) is:"%(vn, obj_var_name), new_log_var_name                    
+                    new_log_var_names.append(new_log_var_name)
+                    
+                new_log_var_name_list.append(new_log_var_names)
+                
+            self.log_var_name_list = new_log_var_name_list
+            
         for (obj, obj_var_names, log_var_names, var_types) in zip(self.obj_list, self.obj_var_names_list, self.log_var_name_list, self.var_types_list):
             for (obj_var_name, log_var_name, var_type) in zip(obj_var_names, log_var_names, var_types):
-
                 if(obj is None):
                     var = local_dict[obj_var_name]
                 else:
@@ -137,11 +164,6 @@ class RaiLogger(DataCollector):
                 if(var_type=='variable'):
                     self.add_variable(var, log_var_name[0], unit="")
                 elif(var_type=='vector'):
-                    if(len(log_var_name) != var.size):
-                        # in case it was not possible to access the variable when auto_log_variables was called
-                        vn = log_var_name[0]
-                        log_var_name[0] = vn+'_0'
-                        log_var_name += [vn+'_'+str(i) for i in range(1, self._vector_size(var))]
                     self.add_vector(var, log_var_name)
                 elif(var_type=='vector3d'):
                     self.add_vector(var, log_var_name)
@@ -176,8 +198,12 @@ class RaiLogger(DataCollector):
         
         if(unit_vec is None):
             unit_vec = self._vector_size(data_vec)*['',]
-
-        super(RaiLogger,self).add_vector(data_vec, field_vec, unit_vec)
+            
+        try:
+            super(RaiLogger,self).add_vector(data_vec, field_vec, unit_vec)
+        except:
+            print "Error while adding vector %s with data:"%(field), data_vec
+            raise
 
 def exampleSimpleArrayLogger():    
     N = 10
