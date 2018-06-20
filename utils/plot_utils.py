@@ -102,11 +102,14 @@ def plot_from_logger(logger, dt, streams, labels=None, titles=None, linestyles=N
     for (sp_streams, sp_labels, sp_linestyles) in zip(streams, labels, linestyles):
         N = len(logger.get_streams(sp_streams[0]))
         time = np.arange(0.0, dt*N, dt)
-        for (stream, label, ls) in zip(sp_streams, sp_labels, sp_linestyles):            
-            if( ls is None):
-                ax[i].plot(time, logger.get_streams(stream), label=label)
-            else:
-                ax[i].plot(time, logger.get_streams(stream), ls, label=label)
+        for (stream, label, ls) in zip(sp_streams, sp_labels, sp_linestyles):
+            try:
+                if( ls is None):
+                    ax[i].plot(time, logger.get_streams(stream), label=label)
+                else:
+                    ax[i].plot(time, logger.get_streams(stream), ls, label=label)
+            except KeyError:
+                print "[plot_from_logger] Could not find field %s"%(stream)
         ax[i].legend()
         if titles is not None:
             ax[i].set_title(titles[i])
