@@ -135,10 +135,14 @@ class RaiLogger(DataCollector):
             for (obj, obj_var_names, log_var_names, var_types) in zip(self.obj_list, self.obj_var_names_list, self.log_var_name_list, self.var_types_list):
                 new_log_var_names = []
                 for (obj_var_name, log_var_name, var_type) in zip(obj_var_names, log_var_names, var_types):
-                    if(obj is None):
-                        var = local_dict[obj_var_name]
-                    else:
-                        var = obj.__dict__[obj_var_name]
+                    try:
+                        if(obj is None):
+                            var = local_dict[obj_var_name]
+                        else:
+                            var = obj.__dict__[obj_var_name]
+                    except KeyError:
+                        print "Could not find field %s of type %s" % (obj_var_name, var_type)
+                        raise
                     
                     # by default assume the log-var-name will not change
                     new_log_var_name = log_var_name
