@@ -33,7 +33,7 @@ def controller(q,v,f,df):
     t=log_index*simu.dt
     tsid.solve(q,v,f,df,t)
     if not log_index%100 :
-        print "t:{0} \t com error \t{1} ".format(log_index*dt, np.linalg.norm(tsid.data.com_p_err))
+        print "t:%.1f \t com error \t%.3f " % (log_index*dt, np.linalg.norm(tsid.data.com_p_err))
     return np.vstack([f_disturb_traj(t), tsid.data.tau])
     
 def f_disturb_traj(t):
@@ -55,19 +55,19 @@ if useViewer:
                                        0.5243823528289795, 0.518651008605957, 0.4620114266872406, 0.4925136864185333])
 
 #Plots
-PLOT_COM_AND_FORCES = 1
-PLOT_COM_DERIVATIVES = 1
-PLOT_ANGULAR_MOMENTUM_DERIVATIVES = 0   
-PLOT_JOINT_TORQUES = 1
+PLOT_FORCES                         = 1
+PLOT_COM_DERIVATIVES                = 1
+PLOT_ANGULAR_MOMENTUM_DERIVATIVES   = 0   
+PLOT_JOINT_TORQUES                  = 0
    
 #Simulation parameters
 dt  = 1e-3
 ndt = 5
 simulation_time = 2.0
 USE_REAL_STATE = 0       # use real state for controller feedback
-T_DISTURB_BEGIN = 0.5           # Time at which the disturbance starts
+T_DISTURB_BEGIN = 0.50          # Time at which the disturbance starts
 T_DISTURB_END   = 0.51          # Time at which the disturbance ends
-F_DISTURB = np.matrix([200.,0.,0.]).T
+F_DISTURB = np.matrix([1e3, 0, 0]).T
 
 #robot parameters
 tauc = 0.*np.array([1.,1.,1.,1.])#coulomb friction
@@ -130,14 +130,15 @@ n_x = 9+4
 n_u = 4
 n_y = 9
 sigma_x_0 = 1e-2                    # initial state estimate std dev
-sigma_ddf = 2e4*ones(4)             # control (i.e. force accelerations) noise std dev used in EKF
+sigma_ddf    = 1e4*ones(4)          # control (i.e. force accelerations) noise std dev used in EKF
+sigma_f_dist = 1e1*ones(2)          # external force noise std dev used in EKF
 sigma_c  = 1e-3*ones(2)             # CoM position measurement noise std dev
 sigma_dc = ns.std_gyry*ones(2)      # CoM velocity measurement noise std dev
 sigma_l  = 1e-1*ones(1)             # angular momentum measurement noise std dev
 sigma_f  = np.array([ns.std_fy, ns.std_fz, ns.std_fy, ns.std_fz])  # force measurement noise std dev
 S_0 = sigma_x_0**2 * np.eye(n_x)
 
-centroidalEstimator = MomentumEKF(dt, m, g_vec, c0.A1, dc0.A1, np.array([l0]), f0.A1, S_0, sigma_c, sigma_dc, sigma_l, sigma_f, sigma_ddf)
+centroidalEstimator = MomentumEKF(dt, m, g_vec, c0.A1, dc0.A1, np.array([l0]), f0.A1, S_0, sigma_c, sigma_dc, sigma_l, sigma_f, sigma_ddf, sigma_f_dist)
 
 log_size = int(simulation_time / dt)    #max simulation samples
 log_t        = np.zeros([log_size,1])+np.nan  # time
@@ -216,18 +217,18 @@ def loop(q, v, f, df, niter, ndt=None, dt=None, tsleep=.9, fdisplay=100):
 q,v,f,df = q0.copy(), v0.copy(), f0.copy(), df0.copy()
 q,v = loop(q,v,f,df,log_size)
 
-if PLOT_COM_AND_FORCES:
+if PLOT_FORCES:
     fields, labels, linest = [], [], []
-    fields += [['com_p_0', 'tsid_comref_0']]
-    labels += [['com',     'com ref']]
-    linest += [[None, '--']]
+#    fields += [['com_p_0', 'tsid_comref_0']]
+#    labels += [['com',     'com ref']]
+#    linest += [[None, '--']]
     fields += [['lkf_sensor_0', 'rkf_sensor_0', 'ekf_f_0',        'ekf_f_2',         'tsid_lkf_0',     'tsid_rkf_0']]
     labels += [['left force',   'right force',  'ekf left force', 'ekf right force', 'left des force', 'right des force']]
     linest += [['b', 'r', None, None, ':', ':']]
     fields += [['lkf_sensor_1', 'rkf_sensor_1', 'ekf_f_1',        'ekf_f_3',         'tsid_lkf_1',     'tsid_rkf_1']]
     labels += [['left force',   'right force',  'ekf left force', 'ekf right force', 'left des force', 'right des force']]
     linest += [['b', 'r', None, None, ':', ':']]
-    plot_from_logger(lgr, dt, fields, labels, ['CoM Y', 'Forces Y', 'Forces Z'], linest, ncols=1)
+    plot_from_logger(lgr, dt, fields, labels, ['Forces Y', 'Forces Z'], linest, ncols=1)
 
 
 if PLOT_COM_DERIVATIVES :

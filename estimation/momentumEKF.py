@@ -53,12 +53,14 @@ class MomentumEKF(ExtendedKalmanFilter):
             Contact force measurement noise std dev
         sigma_ddf : np.array
             Control noise std dev
+        sigma_f_dist : np.array
+            Std dev of disturbance force (e.g. in case of external pushes)
     """
     
     USE_FINITE_DIFF = False # just for debug
 
     def __init__(self, dt, mass, g, c, dc, l, f, P, sigma_c,
-                 sigma_dc, sigma_l, sigma_f, sigma_ddf):
+                 sigma_dc, sigma_l, sigma_f, sigma_ddf, sigma_f_dist=None):
         # compute size of state, measurements, and input
         self.n_lin = c.shape[0] # size of linear variables
         self.n_ang = l.shape[0] # size of angular variables
@@ -105,11 +107,18 @@ class MomentumEKF(ExtendedKalmanFilter):
             self.B[ic:idc,  i*nl:(i+1)*nl] = dt4*eye(nl)/(24*mass)
             self.B[idc:il,  i*nl:(i+1)*nl] = dt3*eye(nl)/(6*mass)
             self.B[il:i_f,  i*nl:(i+1)*nl] = dt3*np.ones((na,nl))    # this is not precise
-
-        self.B[idf:,    :] = dt*eye(dim_u)
         self.B[i_f:idf, :] = 0.5*dt2*eye(dim_u)
+        self.B[idf:,    :] = dt*eye(dim_u)
         
-        self.Q = dot(self.B, dot(np.diag(sigma_ddf**2), self.B.T)) # process uncertainty
+        self.Q  = dot(self.B, dot(np.diag(sigma_ddf**2),    self.B.T)) # process uncertainty
+        
+        if(sigma_f_dist is not None):
+            # disturbance force transition matrix
+            B_dist = zeros((dim_x, nl))
+            B_dist[ic:idc,  :] = dt2*eye(nl)/(2*mass)
+            B_dist[idc:il,  :] = dt*eye(nl)/mass
+    #        B_dist[il:i_f,  :] = dt*np.ones((na,nl))    # this is not precise
+            self.Q += dot(B_dist, dot(np.diag(sigma_f_dist**2), B_dist.T))
           
         # initialize state estimation
         self.x = zeros(dim_x)
@@ -248,7 +257,7 @@ class MomentumEKF(ExtendedKalmanFilter):
         self.update_transition_matrix(p)
         
         F = self.F
-        B = self.B
+#        B = self.B
         H = self.H
         P = self.P
         Q = self.Q
