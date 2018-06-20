@@ -123,7 +123,7 @@ class TsidFlexibleContact:
         
         return dddam_des, Xl, Nl
         
-    def solve(self, q, v, f_meas, df_meas=None, t=0.0):
+    def solve(self, t, q, v, f_meas, df_meas=None):
         robot=self.robot
         NQ,NV,NB,RF,LF,RK,LK = self.NQ,self.NV,self.NB,self.RF,self.LF,self.RK,self.LK
         w_post = self.w_post

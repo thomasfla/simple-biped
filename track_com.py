@@ -28,11 +28,11 @@ np.set_printoptions(precision=3, linewidth=200)
 if useViewer:
     restert_viewer_server()
     
-def controller(q,v,f,df):
+def controller(q,v,f):
     ''' Take the sensor data (position, velocity and contact forces) 
     and generate a torque command '''
     t=log_index*simu.dt
-    tsid.solve(q,v,f,df,t)
+    tsid.solve(t, q, v, f)
     if not log_index%100 :
         print "t:%.1f \t com error \t%.3f " % (log_index*dt, np.linalg.norm(tsid.data.com_p_err))
     return np.vstack([f_disturb_traj(t), tsid.data.tau])
@@ -68,35 +68,39 @@ simulation_time = 2.0
 USE_REAL_STATE = 0       # use real state for controller feedback
 T_DISTURB_BEGIN = 0.50          # Time at which the disturbance starts
 T_DISTURB_END   = 0.51          # Time at which the disturbance ends
-F_DISTURB = np.matrix([5e2, 0, 0]).T
+F_DISTURB = np.matrix([0*5e2, 0, 0]).T
+
+COM_REF_START = [0.001,      0.527]
+COM_REF_END   = [0.001+0.03, 0.527]
+COM_TRAJ_TIME = 1.0
 
 #robot parameters
 tauc = 0.*np.array([1.,1.,1.,1.])#coulomb friction
 Ky = 23770.
 Kz = 239018.
-By = 50. *0.
-Bz = 500.*0.
+By = 50e0
+Bz = 500e0
 Kspring = -np.diagflat([Ky,Kz,0.])     # Stiffness of the feet spring
 Bspring = -np.diagflat([By,Bz,0.])     # damping of the feet spring
 
 #Controller parameters
 fc_dtau_filter = 100.           # cutoff frequency of the filter applyed to the finite differences of the torques 
-FLEXIBLE_CONTROLLER = True      # if True it uses the controller for flexible contacts
+CONTROLLER = 'tsid'             # either 'tsid' or 'tsid_flex' or 'tsid_adm'
 fc      = np.inf                # cutoff frequency of the Force fiter
 Ktau    = 2.0                   # torque proportional feedback gain
 Kdtau   = 2.*sqrt(Ktau)*0.00    # Make it unstable ??
 Kp_post = 10                    # postural task proportional feedback gain
-if(FLEXIBLE_CONTROLLER):
+if(CONTROLLER=='tsid_flex'):
     w_post  = 0.1
     (Kp_com, Kd_com, Ka_com, Kj_com) = (1.20e+06, 1.54e+05, 7.10e+03, 1.40e+02)
+elif(CONTROLLER=='tsid'):
+    w_post = 1e-2                  # postural task weight
+    Kp_com = 30                    # com proportional feedback gain
+    Kd_com = 2*sqrt(Kp_com)         # com derivative feedback gain
 else:
     w_post = 0.001                  # postural task weight
     Kp_com = 30                    # com proportional feedback gain
     Kd_com = 2*sqrt(Kp_com)         # com derivative feedback gain
-    
-COM_REF_START = [0.00, 0.53]
-COM_REF_END   = [0.00, 0.53]
-COM_TRAJ_TIME = 1.0
 
 #Simulator
 simu = Simu(robot,dt=dt,ndt=ndt)
@@ -118,6 +122,9 @@ q0[1]-=0.5*m*g/Kz
 f0,df0 = simu.compute_f_df_from_q_v(q0,v0)
 c0,dc0,ddc0,dddc0 = robot.get_com_and_derivatives(q0,v0,f0,df0)
 l0 = 0
+
+#COM_REF_START = c0.A1
+#COM_REF_END   = c0.A1
 
 dtau_fd_filter = FiniteDiff(dt)
 dtau_lp_filter = FIR1LowPass(np.exp(-2*pi*fc_dtau_filter*dt)) # Force sensor filter
@@ -145,10 +152,10 @@ log_size = int(simulation_time / dt)    #max simulation samples
 log_t        = np.zeros([log_size,1])+np.nan  # time
 log_index = 0  
 
-if FLEXIBLE_CONTROLLER:
-    tsid=TsidFlexibleContact(robot,Ky,Kz,w_post,Kp_post,Kp_com, Kd_com, Ka_com, Kj_com, centroidalEstimator)
+if CONTROLLER=='tsid_flex':
+    tsid = TsidFlexibleContact(robot, Ky, Kz, w_post, Kp_post, Kp_com, Kd_com, Ka_com, Kj_com, centroidalEstimator)
 else:
-    tsid=Tsid(robot,Ky,Kz,Kp_post,Kp_com,w_post)
+    tsid = Tsid(robot, Ky, Kz, Kp_post, Kp_com, w_post)
 
 tsid.callback_com = lambda t : com_traj(t, COM_REF_START, COM_REF_END, COM_TRAJ_TIME)
 
@@ -156,14 +163,14 @@ tsid.callback_com = lambda t : com_traj(t, COM_REF_START, COM_REF_END, COM_TRAJ_
 lgr = RaiLogger()
 vc = 'vector'
 vr = 'variable'
-tsid_var_names  = ['dv', 'tau', 'com_p_err', 'com_v_err', 'com_p_mes', 'com_v_mes', 'com_p_est', 'com_v_est', 'comref']
-tsid_var_types  = [ vc,     vc,     vc,          vc,          vc,            vc,           vc,         vc,       vc]
-#Integral of angular momentum approximated by base orientation, angular momentum, its 1st and 2nd derivative, its desired 3rd derivative
-tsid_var_names += ['iam', 'am', 'dam', 'ddam', 'dddam_des']
-tsid_var_types += [  vr,   vr,    vr,     vr,       vr]
-tsid_var_names += ['lkf', 'rkf', 'lf_a_des', 'rf_a_des', 'robotInertia']
-tsid_var_types += [  vc,    vc,      vc,         vc,         vr]
-if FLEXIBLE_CONTROLLER:
+tsid_var_names  = ['dv', 'tau', 'com_p_err', 'com_v_err', 'com_p_mes', 'com_v_mes', 'com_p_est', 'com_v_est', 'comref', 'lkf', 'rkf']
+tsid_var_types  = [ vc,     vc,     vc,          vc,          vc,            vc,           vc,         vc,       vc,      vc,    vc]
+if CONTROLLER=='tsid_flex':
+    tsid_var_names += [ 'lf_a_des', 'rf_a_des']
+    tsid_var_types += [     vc,         vc    ]
+    #Integral of angular momentum approximated by base orientation, angular momentum, its 1st and 2nd derivative, its desired 3rd derivative
+    tsid_var_names += ['iam', 'am', 'dam', 'ddam', 'dddam_des', 'robotInertia']
+    tsid_var_types += [  vr,   vr,    vr,     vr,       vr,          vr]
     tsid_var_names += ['com_a_err', 'com_j_err', 'com_a_mes', 'com_a_est', 'com_j_est', 'com_s_des']
     tsid_var_types += [     vc,          vc,          vc,          vc,          vc,            vc]
 else:
@@ -186,6 +193,9 @@ def loop(q, v, f, df, niter, ndt=None, dt=None, tsleep=.9, fdisplay=100):
     if ndt is not None: simu.ndt = ndt
     robot.display(q)
     
+    com_p, com_v, com_a, com_j = robot.get_com_and_derivatives(q,v,f,df)
+    print "com initial state:\n", com_p.T, com_v.T, com_a.T, com_j.T
+    
     for i in range(niter):
         log_index = i
         # add noise to the perfect state q,v,f,df
@@ -195,7 +205,7 @@ def loop(q, v, f, df, niter, ndt=None, dt=None, tsleep=.9, fdisplay=100):
             q_noisy,v_noisy,f_noisy,df_noisy = ns.get_noisy_state(q,v,f,df)
         
         # simulate the system
-        u = controller(q_noisy,v_noisy,f_noisy,df_noisy)
+        u = controller(q_noisy,v_noisy,f_noisy)
         q,v,f,df = simu(q,v,u)
 
         # log data        
@@ -220,9 +230,6 @@ q,v = loop(q,v,f,df,log_size)
 
 if PLOT_FORCES:
     fields, labels, linest = [], [], []
-#    fields += [['com_p_0', 'tsid_comref_0']]
-#    labels += [['com',     'com ref']]
-#    linest += [[None, '--']]
     fields += [['lkf_sensor_0', 'rkf_sensor_0', 'ekf_f_0',        'ekf_f_2',         'tsid_lkf_0',     'tsid_rkf_0']]
     labels += [['left force',   'right force',  'ekf left force', 'ekf right force', 'left des force', 'right des force']]
     linest += [['b', 'r', None, None, ':', ':']]
