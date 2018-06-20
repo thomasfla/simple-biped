@@ -9,7 +9,7 @@ from utils.utils_thomas import restert_viewer_server, traj_sinusoid, finite_diff
 from utils.logger import RaiLogger
 from utils.filters import FIR1LowPass, FiniteDiff
 import matplotlib.pyplot as plt
-import utils.plot_utils
+from utils.plot_utils import plot_from_logger
 from tsid import Tsid
 from tsid_flexible_contacts import TsidFlexibleContact
 from path import pkg, urdf 
@@ -139,7 +139,7 @@ n_x = 9+4
 n_u = 4
 n_y = 9
 sigma_x_0 = 1e-2                    # initial state estimate std dev
-sigma_ddf = 1e4*ones(4)             # control (i.e. force accelerations) noise std dev used in EKF
+sigma_ddf = 1e5*ones(4)             # control (i.e. force accelerations) noise std dev used in EKF
 sigma_c  = 1e-3*ones(2)             # CoM position measurement noise std dev
 sigma_dc = ns.std_gyry*ones(2)      # CoM velocity measurement noise std dev
 sigma_l  = 1e-1*ones(1)             # angular momentum measurement noise std dev
@@ -228,80 +228,38 @@ control = controller
 q,v,f,df = q0.copy(), v0.copy(), f0.copy(), df0.copy()
 q,v = loop(q,v,f,df,log_size)
 
-
 if PLOT_COM_AND_FORCES:
-    f, ax = plt.subplots(3,1,sharex=True);
-    ax1 = plt.subplot(311)
-    infostr = "Infos:"
-    infostr += "\n Ktau  = {}".format(Ktau)
-    infostr += "\n fc FTfilter = {} Hz".format(fc)
-    infostr += "\n Kp_post {}".format(Kp_post)
-    infostr += "\n Kp_com {}".format(Kp_com)
-    infostr += "\n tauc {}".format(tauc)
-    infostr += "\n Ky={} Kz={}".format(Ky,Kz)
-    infostr += "\n dt={}ms ndt={}".format(dt*1000,ndt)
-    plt.text(0.1, 0.05, infostr,
-            bbox={'facecolor':'white', 'alpha':0.8, 'pad':10})
-    plt.title('com tracking Y')
-    plt.plot(log_t, lgr.com_p_0, label="com")
-#    plt.plot(log_t, lgr.tsid_com_p_err_0, label="com error")
-    plt.plot(log_t, lgr.tsid_comref_0,    label="com ref")
-    plt.legend()
-    plt.subplot(312, sharex=ax1)
-    plt.title('feet forces Y') 
-    plt.plot(log_t, lgr.get_streams('lkf_sensor_0'),label="left force", color='b')
-    plt.plot(log_t, lgr.get_streams('rkf_sensor_0'),label="right force", color='r')
-    plt.plot(log_t, lgr.ekf_f_0, '--', label="ekf left force")
-    plt.plot(log_t, lgr.ekf_f_2, '--', label="ekf right force")
-    plt.plot(log_t, lgr.tsid_lkf_0, label="left des force", linestyle=':')
-    plt.plot(log_t, lgr.tsid_rkf_0, label="right des force", linestyle=':')
-    plt.legend()
-    plt.subplot(313, sharex=ax1)
-    plt.title('feet forces Z')
-    plt.plot(log_t, lgr.get_streams('lkf_sensor_1'), label="left force", color='b')
-    plt.plot(log_t, lgr.get_streams('rkf_sensor_1'), label="right force", color='r')
-    plt.plot(log_t, lgr.ekf_f_1, '--', label="ekf left force")
-    plt.plot(log_t, lgr.ekf_f_3, '--', label="ekf right force")
-    plt.plot(log_t, lgr.tsid_lkf_1, label="left des force", linestyle=':')
-    plt.plot(log_t, lgr.tsid_rkf_1, label="right des force", linestyle=':')
-    plt.legend()
-#    plt.show()
+    fields, labels, linest = [], [], []
+    fields += [['com_p_0', 'tsid_comref_0']]
+    labels += [['com',     'com ref']]
+    linest += [[None, '--']]
+    fields += [['lkf_sensor_0', 'rkf_sensor_0', 'ekf_f_0',        'ekf_f_2',         'tsid_lkf_0',     'tsid_rkf_0']]
+    labels += [['left force',   'right force',  'ekf left force', 'ekf right force', 'left des force', 'right des force']]
+    linest += [['b', 'r', None, None, ':', ':']]
+    fields += [['lkf_sensor_1', 'rkf_sensor_1', 'ekf_f_1',        'ekf_f_3',         'tsid_lkf_1',     'tsid_rkf_1']]
+    labels += [['left force',   'right force',  'ekf left force', 'ekf right force', 'left des force', 'right des force']]
+    linest += [[None, '--']]
+    plot_from_logger(lgr, dt, fields, labels, ['CoM Y', 'Forces Y', 'Forces Z'], linest, ncols=1)
 
 
 if PLOT_COM_DERIVATIVES :
-    axe_label = {0:'Y', 1:'Z'}    
+    ax_lbl = {0:'Y', 1:'Z'}    
     for i in [0,1]:
-        f, ax = plt.subplots(5,1,sharex=True);
-        ax1 = plt.subplot(511)
-        plt.plot(log_t, lgr.get_streams('com_p_'+str(i)), label="com " + axe_label[i]) 
-        plt.plot(log_t, lgr.get_streams('tsid_com_p_est_'+str(i)), '--', label="estimated com "+axe_label[i])
-#        plt.plot(log_t, lgr.get_streams('tsid_com_p_mes_'+str(i)), label="measured com "+axe_label[i])        
-#        plt.plot(log_t, lgr.get_streams('ekf_c_'+str(i)),          label="ekf com "+axe_label[i])        
-        plt.legend()
-        plt.subplot(512,sharex=ax1)
-        plt.plot(log_t, lgr.get_streams('com_v_'+str(i)), label="vcom "+ axe_label[i]) 
-        plt.plot(log_t, lgr.get_streams('tsid_com_v_est_'+str(i)), '--', label="estimated vcom "+ axe_label[i]) 
-#        plt.plot(log_t, lgr.get_streams('tsid_com_v_mes_'+str(i)), label="measured vcom "+ axe_label[i])         
-#        plt.plot(log_t, lgr.get_streams('ekf_dc_'+str(i)),          label="ekf vcom "+axe_label[i])        
-        plt.legend()
-        plt.subplot(513,sharex=ax1)
-        plt.plot(log_t, lgr.get_streams('com_a_'+str(i)), label="acom "+ axe_label[i]) 
-        plt.plot(log_t, lgr.get_streams('tsid_com_a_est_'+str(i)), '--', label="estimated acom "+ axe_label[i]) 
-#        plt.plot(log_t, lgr.get_streams('tsid_com_a_mes_'+str(i)), label="measured acom "+ axe_label[i])         
-        if not FLEXIBLE_CONTROLLER :
-            plt.plot(log_t, lgr.get_streams('tsid_com_a_des_'+str(i)), label="desired acom" + axe_label[i])
-        plt.legend()
-        plt.subplot(514,sharex=ax1)
-        plt.plot(log_t, lgr.get_streams('com_j_'+str(i)), label="jcom "+ axe_label[i]) 
-        plt.plot(log_t, lgr.get_streams('tsid_com_j_est_'+str(i)), '--', label="estimated jcom "+ axe_label[i]) 
-        plt.legend()
-        plt.subplot(515,sharex=ax1)
-        if FLEXIBLE_CONTROLLER :
-            plt.plot(log_t, lgr.get_streams('tsid_com_s_des_'+str(i)), label="desired scom" + axe_label[i])
-        plt.plot(log_t, finite_diff(lgr.get_streams('com_j_'+str(i)), dt), ':', label="finite diff jcom " + axe_label[i])
-        #~ plt.plot(log_t,log_lkf_sensor[:,1], label="force Left z")
-        #~ plt.plot(log_t,log_rkf_sensor[:,1], label="force Right z")
-        plt.legend()
+        fields, labels, linest = [], [], []
+        fields += [['com_p_'+str(i),  'tsid_com_p_est_'+str(i)]]
+        labels += [['com '+ax_lbl[i], 'estimated com '+ax_lbl[i]]]
+        linest += [[None, '--']]
+        fields += [['com_v_'+str(i),      'tsid_com_v_est_'+str(i)]]
+        labels += [['com vel '+ax_lbl[i], 'estimated com vel '+ax_lbl[i]]]
+        linest += [[None, '--']]
+        fields += [['com_a_'+str(i),      'tsid_com_a_est_'+str(i)]]
+        labels += [['com acc '+ax_lbl[i], 'estimated com acc '+ax_lbl[i]]]
+        linest += [[None, '--']]
+        fields += [['com_j_'+str(i),      'tsid_com_j_est_'+str(i)]]
+        labels += [['com jerk '+ax_lbl[i], 'estimated com jerk '+ax_lbl[i]]]
+        linest += [[None, '--']]
+        plot_from_logger(lgr, dt, fields, labels, ['CoM', 'CoM Vel', 'CoM Acc', 'CoM Jerk'], linest, ncols=1)
+        
 
 if PLOT_ANGULAR_MOMENTUM_DERIVATIVES:
     f, ax = plt.subplots(5,1,sharex=True);

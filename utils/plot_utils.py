@@ -84,7 +84,35 @@ def setAxisFontSize(ax, size):
         label.set_fontsize(size)
         label.set_bbox(dict(facecolor='white', edgecolor='None', alpha=0.65))
 
-
+def plot_from_logger(logger, dt, streams, labels=None, titles=None, linestyles=None, ncols=1):
+    nsubplots = len(streams)
+    nrows = int(nsubplots/ncols)
+    f, ax = plt.subplots(nrows, ncols, sharex=True);
+    if(nsubplots>1):
+        ax = ax.reshape(nsubplots)
+    else:
+        ax = [ax]
+    
+    if labels is None:
+        labels = streams
+    if linestyles is None:
+        linestyles = [[None for j in i] for i in streams] 
+        
+    i = 0
+    for (sp_streams, sp_labels, sp_linestyles) in zip(streams, labels, linestyles):
+        N = len(logger.get_streams(sp_streams[0]))
+        time = np.arange(0.0, dt*N, dt)
+        for (stream, label, ls) in zip(sp_streams, sp_labels, sp_linestyles):            
+            if( ls is None):
+                ax[i].plot(time, logger.get_streams(stream), label=label)
+            else:
+                ax[i].plot(time, logger.get_streams(stream), ls, label=label)
+        ax[i].legend()
+        if titles is not None:
+            ax[i].set_title(titles[i])
+        i += 1
+    return ax
+    
 def grayify_cmap(cmap):
     """Return a grayscale version of the colormap"""
     cmap = plt.cm.get_cmap(cmap)
