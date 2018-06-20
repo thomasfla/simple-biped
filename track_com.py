@@ -32,18 +32,8 @@ def controller(q,v,f,df):
     and generate a torque command '''
     t=log_index*simu.dt
     tsid.solve(q,v,f,df,t)
-    
     if not log_index%100 :
         print "t:{0} \t com error \t{1} ".format(log_index*dt, np.linalg.norm(tsid.data.com_p_err))
-        
-    # check that the state doesn't go crazy
-    if np.linalg.norm(tsid.data.com_p_err) > 0.1:
-        raise ValueError("COM error > 0.1")
-    if np.linalg.norm(tsid.data.f) > 500:
-        raise ValueError("Forces > 500")
-    if np.linalg.norm(q) > 10:
-        raise ValueError("q > 10")
-        
     return np.vstack([f_disturb_traj(t), tsid.data.tau])
     
 def f_disturb_traj(t):
@@ -68,6 +58,7 @@ if useViewer:
 PLOT_COM_AND_FORCES = 1
 PLOT_COM_DERIVATIVES = 1
 PLOT_ANGULAR_MOMENTUM_DERIVATIVES = 0   
+PLOT_JOINT_TORQUES = 1
    
 #Simulation parameters
 dt  = 1e-3
@@ -139,7 +130,7 @@ n_x = 9+4
 n_u = 4
 n_y = 9
 sigma_x_0 = 1e-2                    # initial state estimate std dev
-sigma_ddf = 1e5*ones(4)             # control (i.e. force accelerations) noise std dev used in EKF
+sigma_ddf = 2e4*ones(4)             # control (i.e. force accelerations) noise std dev used in EKF
 sigma_c  = 1e-3*ones(2)             # CoM position measurement noise std dev
 sigma_dc = ns.std_gyry*ones(2)      # CoM velocity measurement noise std dev
 sigma_l  = 1e-1*ones(1)             # angular momentum measurement noise std dev
@@ -181,14 +172,13 @@ lgr.auto_log_variables(simu, ['vlf', 'vrf', 'dv'], [vc, vc, vc], 'simu')
 lgr.auto_log_variables(centroidalEstimator, ['x'], [vc], log_var_names=[['ekf_c_0', 'ekf_c_1', 'ekf_dc_0', 'ekf_dc_1', 'ekf_l', 'ekf_f_0', 'ekf_f_1',
                                                                          'ekf_f_2', 'ekf_f_3', 'ekf_df_0', 'ekf_df_1', 'ekf_df_2', 'ekf_df_3']])
 
-lgr.auto_log_local_variables(['com_p', 'com_v', 'com_a', 'com_j', 'ddf_des', 'ddf'], [vc, vc, vc, vc, vc, vc])
+lgr.auto_log_local_variables(['com_p', 'com_v', 'com_a', 'com_j', 'ddf'], [vc, vc, vc, vc, vc])
 lgr.auto_log_local_variables(['f'], [vc], log_var_names=[['lkf_sensor_0', 'lkf_sensor_1', 'rkf_sensor_0', 'rkf_sensor_1']])
 lgr.auto_log_local_variables(['df'], [vc], log_var_names=[['lkdf_sensor_0', 'lkdf_sensor_1', 'rkdf_sensor_0', 'rkdf_sensor_1']])
     
 def loop(q, v, f, df, niter, ndt=None, dt=None, tsleep=.9, fdisplay=100):
     global log_index
     last_df  = np.matrix(np.zeros(4)).T
-    ddf_des = np.zeros(4)
     t0 = time.time()
     if dt  is not None: simu.dt  = dt
     if ndt is not None: simu.ndt = ndt
@@ -203,7 +193,7 @@ def loop(q, v, f, df, niter, ndt=None, dt=None, tsleep=.9, fdisplay=100):
             q_noisy,v_noisy,f_noisy,df_noisy = ns.get_noisy_state(q,v,f,df)
         
         # simulate the system
-        u = control(q_noisy,v_noisy,f_noisy,df_noisy)
+        u = controller(q_noisy,v_noisy,f_noisy,df_noisy)
         q,v,f,df = simu(q,v,u)
 
         # log data        
@@ -222,9 +212,7 @@ def loop(q, v, f, df, niter, ndt=None, dt=None, tsleep=.9, fdisplay=100):
     print 'Elapsed time = %.2f (simu time=%.2f)' % (time.time()-t0, simu.dt*niter)
     return q,v
 
-
 # control the robot with an inverse dynamic:
-control = controller
 q,v,f,df = q0.copy(), v0.copy(), f0.copy(), df0.copy()
 q,v = loop(q,v,f,df,log_size)
 
@@ -238,7 +226,7 @@ if PLOT_COM_AND_FORCES:
     linest += [['b', 'r', None, None, ':', ':']]
     fields += [['lkf_sensor_1', 'rkf_sensor_1', 'ekf_f_1',        'ekf_f_3',         'tsid_lkf_1',     'tsid_rkf_1']]
     labels += [['left force',   'right force',  'ekf left force', 'ekf right force', 'left des force', 'right des force']]
-    linest += [[None, '--']]
+    linest += [['b', 'r', None, None, ':', ':']]
     plot_from_logger(lgr, dt, fields, labels, ['CoM Y', 'Forces Y', 'Forces Z'], linest, ncols=1)
 
 
@@ -283,6 +271,9 @@ if PLOT_ANGULAR_MOMENTUM_DERIVATIVES:
     plt.plot(log_t,finite_diff(lgr.tsid_ddam,dt),':', label="fd ddam")
     plt.legend()
 
+if(PLOT_JOINT_TORQUES):
+    plot_from_logger(lgr, dt, [['tsid_tau_'+str(i) for i in range(4)]])
+    
 plt.show()
 
 try:
