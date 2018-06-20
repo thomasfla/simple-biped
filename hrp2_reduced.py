@@ -290,16 +290,22 @@ class Hrp2Reduced:
         am = (Jam*v).A1[0]
         return am
         
-    def get_com_and_derivatives(self, q, v, f, df, recompute=True):
+    def get_com_and_derivatives(self, q, v, f=None, df=None, recompute=True):
         '''Compute the CoM position, velocity, acceleration and jerk from 
            q, v, contact forces and deritavives of the contact forces'''
         if recompute:
             se3.centerOfMass(self.model,self.data,q,v,zero(self.model.nv))
-        m = self.data.mass[0]
-        X = np.hstack([np.eye(2),np.eye(2)])
         com   = self.data.com[0][1:]
         com_v = self.data.vcom[0][1:]
+        if(f is None):
+            return com, com_v
+            
+        m = self.data.mass[0]
+        X = np.hstack([np.eye(2),np.eye(2)])
         com_a = (1/m)*X*f + self.model.gravity.linear[1:]
+        if(df is None):
+            return com, com_v, com_a    
+            
         com_j = (1/m)*X*df
         return com, com_v, com_a, com_j
         
