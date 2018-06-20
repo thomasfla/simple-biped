@@ -51,20 +51,87 @@ class TsidFlexibleContact:
         self.post_a_ref = matlib.zeros(7).T
         self.A_post     = w_post*matlib.eye(7, 7+4+4)
         self.Kspring    = -np.matrix(np.diagflat([Ky,Kz,Ky,Kz]))   # Stiffness of the feet spring
+     
+    def _compute_com_task(self, t, com_est, com_v_est, com_a_est, com_j_est):
+        Kp_com,  Kd_com, Ka_com, Kj_com  = self.Kp_com, self.Kd_com, self.Ka_com, self.Kj_com
+        com_p_ref, com_v_ref, com_a_ref, com_j_ref, com_s_ref = self.callback_com(t)
+        com_p_err = com_est   - com_p_ref
+        com_v_err = com_v_est - com_v_ref
+        com_a_err = com_a_est - com_a_ref
+        com_j_err = com_j_est - com_j_ref
+        com_s_des = -Kp_com*com_p_err -Kd_com*com_v_err -Ka_com*com_a_err -Kj_com*com_j_err +com_s_ref
         
+        m = self.robot.data.mass[0]
+        Xc = (1./m) * np.hstack([np.eye(2),np.eye(2)])
+        Nc = np.matrix([0.,0.]).T
+        
+        self.data.com_p_err = com_p_err.A1
+        self.data.com_v_err = com_v_err.A1
+        self.data.com_a_err = com_a_err.A1
+        self.data.com_j_err = com_j_err.A1
+        self.data.comref    = com_p_ref.A1
+        
+        return com_s_des, Xc, Nc
+        
+    def _compute_ang_mom_task(self, q, v, am_est, com_est, com_v_est, com_a_est, f_est, df_est):
+        Mlf, Mrf = self.robot.get_Mlf_Mrf(q, False)
+        pyl, pzl = Mlf.translation[1:].A1
+        pyr, pzr = Mrf.translation[1:].A1
+        fyl, fzl, fyr, fzr = f_est.A1
+        cy, cz     = com_est.A1
+        dcy, dcz   = com_v_est.A1
+        ddcy, ddcz = com_a_est.A1  
+        dfyl, dfzl, dfyr, dfzr = df_est.A1
+
+        Ky, Kz = self.Ky, self.Kz
+        dpyl, dpzl, dpyr, dpzr = -dfyl/Ky, -dfzl/Kz, -dfyr/Ky, -dfzr/Kz
+        Xl = np.matrix([ 1./-Ky*fzl - (pzl - cz),
+                        -1./-Kz*fyl + (pyl - cy),
+                         1./-Ky*fzr - (pzr - cz),
+                        -1./-Kz*fyr + (pyr - cy)])
+        Nl  = fyl*ddcz - fzl*ddcy + 2*(dpyl-dcy)*dfzl - 2*(dpzl-dcz)*dfyl #checked
+        Nl += fyr*ddcz - fzr*ddcy + 2*(dpyr-dcy)*dfzr - 2*(dpzr-dcz)*dfyr
+        
+        # iam is the integral of the angular momentum approximated by the base orientation.
+        # am dam ddam and dddam are the angular momentum derivatives 
+        
+        # take the same gains as the CoM
+        K_iam, K_am, K_dam, K_ddam  =  self.Kp_com, self.Kd_com, self.Ka_com, self.Kj_com
+        iam_ref, am_ref, dam_ref, ddam_ref, dddam_ref = 0.,0.,0.,0.,0.
+        Jam = self.robot.get_angularMomentumJacobian(q,v)
+        robotInertia = Jam[0,2] 
+        
+        # measurements
+        theta = np.arctan2(q[3],q[2])
+        iam   = robotInertia * theta
+        am    = am_est 
+        dam   = (pyl-cy)*fzl                  -  (pzl-cz)*fyl                  + (pyr-cy)*fzr                 -  (pzr-cz)*fyr
+        ddam  = (dpyl-dcy)*fzl+(pyl-cy)*dfzl - ((dpzl-dcz)*fyl+(pzl-cz)*dfyl) + (dpyr-dcy)*fzr+(pyr-cy)*dfzr - ((dpzr-dcz)*fyr+(pzr-cz)*dfyr)
+
+        iam_err   =  iam -  iam_ref
+        am_err    =   am -   am_ref
+        dam_err   =  dam -  dam_ref
+        ddam_err  = ddam - ddam_ref
+        dddam_des = -K_iam*iam_err -K_am*am_err -K_dam*dam_err -K_ddam*ddam_err +dddam_ref
+        
+        self.data.robotInertia = robotInertia        
+        self.data.iam  = iam
+        self.data.am   = am
+        self.data.dam  = dam
+        self.data.ddam = ddam
+        self.data.dddam_des = dddam_des
+        
+        return dddam_des, Xl, Nl
         
     def solve(self, q, v, f_meas, df_meas=None, t=0.0):
         robot=self.robot
         NQ,NV,NB,RF,LF,RK,LK = self.NQ,self.NV,self.NB,self.RF,self.LF,self.RK,self.LK
         w_post = self.w_post
         Kp_post, Kd_post = self.Kp_post, self.Kd_post
-        Kp_com,  Kd_com, Ka_com, Kj_com  = self.Kp_com, self.Kd_com, self.Ka_com, self.Kj_com
-        Ky, Kz = self.Ky, self.Kz
 
         se3.computeAllTerms(robot.model,robot.data,q,v)
         se3.framesKinematics(robot.model,robot.data,q)
         se3.rnea(robot.model,robot.data,q,v,0*v)
-        m = robot.data.mass[0]
         M = robot.data.M        #(7,7)
         h = robot.data.nle      #(7,1)
         Jl,Jr = robot.get_Jl_Jr_world(q, False)
@@ -92,6 +159,9 @@ class TsidFlexibleContact:
         # Formulate dynamic constrains  (ne sert a rien...)************* todo remove and make the problem smaller
         #      |M   -Jc.T  -S.T| * [dv,f,tau].T =  -h
         Jc = np.vstack([Jl[1:3],Jr[1:3]])    # (4, 7)
+        driftLF,driftRF = robot.get_driftLF_driftRF_world(q,v, False)
+        dJcdq = np.vstack([driftLF.vector[1:3],driftRF.vector[1:3]])
+        
         S  = np.hstack([matlib.zeros([4,3]), matlib.eye(4)]) # (4,7)
         Aec = np.vstack([np.hstack([M ,-Jc.T,-S.T]),
                          np.hstack([matlib.zeros([4,7]), matlib.eye(4), matlib.zeros([4,4])])])
@@ -99,65 +169,17 @@ class TsidFlexibleContact:
         
  
         # CoM TASK COMPUTATIONS
-        com_p_ref, com_v_ref, com_a_ref, com_j_ref, com_s_ref = self.callback_com(t)
-        com_p_err = com_est   - com_p_ref
-        com_v_err = com_v_est - com_v_ref
-        com_a_err = com_a_est - com_a_ref
-        com_j_err = com_j_est - com_j_ref
-        com_s_des = -Kp_com*com_p_err -Kd_com*com_v_err -Ka_com*com_a_err -Kj_com*com_j_err +com_s_ref
+        com_s_des, Xc, Nc = self._compute_com_task(t, com_est, com_v_est, com_a_est, com_j_est)
         
-        driftLF,driftRF = robot.get_driftLF_driftRF_world(q,v, False)
-        dJcdq = np.vstack([driftLF.vector[1:3],driftRF.vector[1:3]])
-
         # ANGULAR MOMENTUM TASK COMPUTATIONS
-        pyl, pzl = Mlf.translation[1:].A1
-        pyr, pzr = Mrf.translation[1:].A1
-        fyl, fzl, fyr, fzr = f_est.A1
-        cy, cz     = com_est.A1
-        dcy, dcz   = com_v_est.A1
-        ddcy, ddcz = com_a_est.A1  
-        dfyl, dfzl, dfyr, dfzr = df_est.A1
-
-        dpyl, dpzl, dpyr, dpzr = -dfyl/Ky, -dfzl/Kz, -dfyr/Ky, -dfzr/Kz
-        Xl = np.matrix([ 1./-Ky*fzl - (pzl - cz),
-                        -1./-Kz*fyl + (pyl - cy),
-                         1./-Ky*fzr - (pzr - cz),
-                        -1./-Kz*fyr + (pyr - cy)])
-        Nl  = fyl*ddcz - fzl*ddcy + 2*(dpyl-dcy)*dfzl - 2*(dpzl-dcz)*dfyl #checked
-        Nl += fyr*ddcz - fzr*ddcy + 2*(dpyr-dcy)*dfzr - 2*(dpzr-dcz)*dfyr
-        
-        Xc = (1./m) * np.hstack([np.eye(2),np.eye(2)])
-        Nc = np.matrix([0.,0.]).T
-        
-        # iam is the integral of the angular momentum approximated by the base orientation.
-        # am dam ddam and dddam are the angular momentum derivatives 
-        
-        # take the same gains as the CoM
-        K_iam, K_am, K_dam, K_ddam  = Kp_com, Kd_com, Ka_com, Kj_com
-        iam_ref, am_ref, dam_ref, ddam_ref, dddam_ref = 0.,0.,0.,0.,0.
-        Jam = robot.get_angularMomentumJacobian(q,v)
-        robotInertia = Jam[0,2] 
-        
-        # measurements
-        theta = np.arctan2(q[3],q[2])
-        iam   = robotInertia * theta
-        am    = am_est 
-        dam   = (pyl-cy)*fzl                  -  (pzl-cz)*fyl                  + (pyr-cy)*fzr                 -  (pzr-cz)*fyr
-        ddam  = (dpyl-dcy)*fzl+(pyl-cy)*dfzl - ((dpzl-dcz)*fyl+(pzl-cz)*dfyl) + (dpyr-dcy)*fzr+(pyr-cy)*dfzr - ((dpzr-dcz)*fyr+(pzr-cz)*dfyr)
-
-        iam_err   =  iam -  iam_ref
-        am_err    =   am -   am_ref
-        dam_err   =  dam -  dam_ref
-        ddam_err  = ddam - ddam_ref
-        dddam_des = -K_iam*iam_err -K_am*am_err -K_dam*dam_err -K_ddam*ddam_err +dddam_ref
+        dddam_des, Xl, Nl = self._compute_ang_mom_task(q, v, am_est, com_est, com_v_est, com_a_est, f_est, df_est)
         
         u_des = np.vstack([com_s_des, dddam_des]) # CoM + Angular Momentum
-        X = np.vstack([Xc, Xl])                   # CoM + Angular Momentum
-        N = np.vstack([Nc, Nl])                   # CoM + Angular Momentum
+        X     = np.vstack([Xc, Xl])               # CoM + Angular Momentum
+        N     = np.vstack([Nc, Nl])               # CoM + Angular Momentum
         
-        A_momentum = X*self.Kspring*Jc
         b_momentum = u_des - N - X*self.Kspring*dJcdq
-        A_momentum = np.hstack([A_momentum ,matlib.zeros([X.shape[0],4+4])]) # feed zero for the variable not in the problem (forces and torques)
+        A_momentum = np.hstack([X*self.Kspring*Jc, matlib.zeros([X.shape[0],4+4])]) # zeros for columns corresponding to forces and torques
 
         #posture task  *************************************************
         post_p_err     = matlib.zeros(7).T
@@ -217,22 +239,8 @@ class TsidFlexibleContact:
         self.data.com_p_est  = com_est.A1
         self.data.com_v_est  = com_v_est.A1
         self.data.com_a_est  = com_a_est.A1
-        self.data.com_j_est  = com_j_est.A1
-        
-        self.data.com_s_des = com_s_des.A1
-        
-        self.data.com_p_err = com_p_err.A1
-        self.data.com_v_err = com_v_err.A1
-        self.data.com_a_err = com_a_err.A1
-        self.data.com_j_err = com_j_err.A1
-        self.data.comref = com_p_ref.A1
-        self.data.robotInertia = robotInertia
-        
-        self.data.iam  = iam
-        self.data.am   = am
-        self.data.dam  = dam
-        self.data.ddam = ddam
-        self.data.dddam_des = dddam_des
+        self.data.com_j_est  = com_j_est.A1        
+        self.data.com_s_des  = com_s_des.A1
         
         self.data.lkf    = f[:2].A1
         self.data.rkf    = f[2:].A1

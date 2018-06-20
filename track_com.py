@@ -67,7 +67,7 @@ simulation_time = 2.0
 USE_REAL_STATE = 0       # use real state for controller feedback
 T_DISTURB_BEGIN = 0.50          # Time at which the disturbance starts
 T_DISTURB_END   = 0.51          # Time at which the disturbance ends
-F_DISTURB = np.matrix([1e3, 0, 0]).T
+F_DISTURB = np.matrix([5e2, 0, 0]).T
 
 #robot parameters
 tauc = 0.*np.array([1.,1.,1.,1.])#coulomb friction
