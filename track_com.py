@@ -206,7 +206,7 @@ if FLEXIBLE_CONTROLLER:
     (Kp_com, Kd_com, Ka_com, Kj_com) = (1.20e+06, 1.54e+05, 7.10e+03, 1.40e+02)
     #~ Kp_com,Kd_com,Ka_com,Kj_com = 2.4e+09, 5.0e+07, 3.5e+05, 1.0e+03
     #~ Kp_com,Kd_com,Ka_com,Kj_com = 17160.0,  6026.0,   791.0,    46.  
-    tsid=TsidFlexibleContact(robot,Ky,Kz,w_post,Kp_post,Kp_com, Kd_com, Ka_com, Kj_com, estimator)
+    tsid=TsidFlexibleContact(robot,Ky,Kz,w_post,Kp_post,Kp_com, Kd_com, Ka_com, Kj_com, centroidalEstimator)
 else:
     tsid=Tsid(robot,Ky,Kz,Kp_post,Kp_com,w_post)
 
@@ -256,22 +256,9 @@ def loop(q, v, f, df, niter, ndt=None, dt=None, tsleep=.9, fdisplay=100):
         else:
             q_noisy,v_noisy,f_noisy,df_noisy = ns.get_noisy_state(q,v,f,df)
         
-        # compute input data for centroidal estimation
-        com_noisy, com_v_noisy, com_a_noisy, com_j_noisy = robot.get_com_and_derivatives(q_noisy,v_noisy,f_noisy,df_noisy)
-        l_noisy = robot.get_angularMomentum(q_noisy,v_noisy)
-        (oMlf,oMrf) = robot.get_Mlf_Mrf(q)
-        p = np.hstack((oMlf.translation[1:].A1, oMrf.translation[1:].A1))
-        centroidalEstimator.predict_update(com_noisy.A1, com_v_noisy.A1, np.array([l_noisy]), f_noisy.A1, p, ddf_des)
-#        (c, dc, l, f, df) = centroidalEstimator.get_state()
-        
         # simulate the system
         u = control(q_noisy,v_noisy,f_noisy,df_noisy)
         q,v,f,df = simu(q,v,u)
-        
-        # compute ddf_des for EKF
-        (a_lf, a_rf) = robot.get_classic_alf_arf(q, v, tsid.data.dv, update=True)
-        ddf_des[:2] = simu.Klf[:2,:2].dot(a_lf.linear.A1[1:])
-        ddf_des[2:] = simu.Krf[:2,:2].dot(a_rf.linear.A1[1:])
 
         # log data        
         log_t[log_index] = log_index*simu.dt
