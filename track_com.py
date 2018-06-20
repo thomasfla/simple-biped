@@ -1,5 +1,6 @@
 import pinocchio as se3
 from numpy import matlib
+import numpy as np
 from pinocchio.utils import *
 from math import pi,sqrt
 from hrp2_reduced import Hrp2Reduced
@@ -14,7 +15,7 @@ from tsid import Tsid
 from tsid_flexible_contacts import TsidFlexibleContact
 from path import pkg, urdf 
 from utils.noise_utils import NoisyState
-from estimation.momentumEKF import *
+from estimation.momentumEKF import MomentumEKF
 
 try:
     from IPython import embed
@@ -130,11 +131,11 @@ n_x = 9+4
 n_u = 4
 n_y = 9
 sigma_x_0 = 1e-2                    # initial state estimate std dev
-sigma_ddf    = 1e4*ones(4)          # control (i.e. force accelerations) noise std dev used in EKF
-sigma_f_dist = 1e1*ones(2)          # external force noise std dev used in EKF
-sigma_c  = 1e-3*ones(2)             # CoM position measurement noise std dev
-sigma_dc = ns.std_gyry*ones(2)      # CoM velocity measurement noise std dev
-sigma_l  = 1e-1*ones(1)             # angular momentum measurement noise std dev
+sigma_ddf    = 1e4*np.ones(4)          # control (i.e. force accelerations) noise std dev used in EKF
+sigma_f_dist = 1e1*np.ones(2)          # external force noise std dev used in EKF
+sigma_c  = 1e-3*np.ones(2)             # CoM position measurement noise std dev
+sigma_dc = ns.std_gyry*np.ones(2)      # CoM velocity measurement noise std dev
+sigma_l  = 1e-1*np.ones(1)             # angular momentum measurement noise std dev
 sigma_f  = np.array([ns.std_fy, ns.std_fz, ns.std_fy, ns.std_fz])  # force measurement noise std dev
 S_0 = sigma_x_0**2 * np.eye(n_x)
 
