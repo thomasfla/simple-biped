@@ -309,6 +309,14 @@ class Hrp2Reduced:
         com_j = (1/m)*X*df
         return com, com_v, com_a, com_j
         
+    def compute_torques_from_dv_and_forces(self, dv, f):
+        M  = self.data.M        #(7,7)
+        h  = self.data.nle      #(7,1)
+        Jl,Jr = self.get_Jl_Jr_world(q, False)
+        Jc = np.vstack([Jl[1:3],Jr[1:3]])    # (4, 7)
+        tau = (M*dv - Jc.T*f + h)[3:]
+        return tau
+        
     def display(self,q):
         se3.forwardKinematics(self.model,self.data,q)
         if self.useViewer:

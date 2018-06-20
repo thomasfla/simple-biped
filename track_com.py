@@ -1,21 +1,20 @@
 import pinocchio as se3
+from numpy import matlib
 from pinocchio.utils import *
 from math import pi,sqrt
 from hrp2_reduced import Hrp2Reduced
 import time 
-from simu import Simu, ForceDict
+from simu import Simu
 from utils.utils_thomas import restert_viewer_server, traj_sinusoid, finite_diff
 from utils.logger import RaiLogger
-from utils.filters import FIR1LowPass, BALowPass, FiniteDiff
+from utils.filters import FIR1LowPass, FiniteDiff
 import matplotlib.pyplot as plt
+import utils.plot_utils
 from tsid import Tsid
 from tsid_flexible_contacts import TsidFlexibleContact
 from path import pkg, urdf 
 from utils.noise_utils import NoisyState
-from estimation.estimators import Kalman
 from estimation.momentumEKF import *
-from utils.plot_utils import plot_gain_stability
-import os
 
 try:
     from IPython import embed
@@ -33,30 +32,6 @@ def controller(q,v,f,df):
     and generate a torque command '''
     t=log_index*simu.dt
     tsid.solve(q,v,f,df,t)
-
-#    dv      = tsid.data.dv
-#    tau_des = tsid.data.tau    
-    #estimate actual torque from (filtered) contact forces
-#    f_filtered = FTSfilter.update(f)
-#    tau_est  = compute_torques_from_dv_and_forces(dv,f_filtered)
-#    tau_est_fd  = dtau_fd_filter.update(tau_est) 
-#    dtau_est = dtau_lp_filter.update(tau_est_fd)
-    #~ tau_ctrl = torque_controller(tau_des,tau_est)
-
-#    if not FLEXIBLE_CONTROLLER:
-        #~ tau_ctrl = tau_des + Ktau*(tau_des-tau_est) - Kdtau * dtau_est
-        # regulation on forces
-        #~ f_des = tsid.data.f 
-        #~ f_ctrl = f_des + Ktau * Ktau * (f_des - f_filtered)
-        #~ tau_ctrl = compute_torques_from_dv_and_forces(dv,f_ctrl) - Kdtau * df
-#        tau_ctrl = tau_des 
-#    else:
-#        tau_ctrl = tau_des 
-
-#    lgr.add_vector(tau_ctrl,   'tau_ctrl')
-#    lgr.add_vector(tau_est,    'tau_est')
-#    lgr.add_vector(tau_est_fd, 'tau_est_fd')
-#    lgr.add_vector(dtau_est,   'dtau_est')
     
     if not log_index%100 :
         print "t:{0} \t com error \t{1} ".format(log_index*dt, np.linalg.norm(tsid.data.com_p_err))
@@ -69,29 +44,18 @@ def controller(q,v,f,df):
     if np.linalg.norm(q) > 10:
         raise ValueError("q > 10")
         
-    return np.vstack([f_disturb_traj(t), tsid.data.tau]) #tau_ctrl])
+    return np.vstack([f_disturb_traj(t), tsid.data.tau])
     
 def f_disturb_traj(t):
-    if DISTURB:
-        if (t>0.5 and t<0.8 ):
-            return np.matrix([0*30.,0.,0.]).T
-        #~ if (t>0.9 and t<0.91 ):
-            #~ return np.matrix([300.,0.,0.]).T
-    return np.matrix([0.,0.,0.]).T
+    if (t>T_DISTURB_BEGIN and t<T_DISTURB_END ):
+        return F_DISTURB
+    return matlib.zeros(3).T
     
 def com_traj(t, c_init, c_final, T):
     py,vy,ay,jy,sy = traj_sinusoid(t, c_init[0], c_final[0], T)
     pz,vz,az,jz,sz = traj_sinusoid(t, c_init[1], c_final[1], T)
     return (np.matrix([[py ],[pz]]), np.matrix([[vy ],[vz]]), 
             np.matrix([[ay ],[az]]), np.matrix([[jy ],[jz]]), np.matrix([[sy ],[sz]]))
-    
-def compute_torques_from_dv_and_forces(dv,f):
-    M  = robot.data.M        #(7,7)
-    h  = robot.data.nle      #(7,1)
-    Jl,Jr = robot.get_Jl_Jr_world(q, False)
-    Jc = np.vstack([Jl[1:3],Jr[1:3]])    # (4, 7)
-    tau = (M*dv - Jc.T*f + h)[3:]
-    return tau
     
 
 robot = Hrp2Reduced(urdf,[pkg],loadModel=True,useViewer=useViewer)
@@ -102,14 +66,18 @@ if useViewer:
 
 #Plots
 PLOT_COM_AND_FORCES = 1
-PLOT_COM_DERIVATIVES = 0
+PLOT_COM_DERIVATIVES = 1
 PLOT_ANGULAR_MOMENTUM_DERIVATIVES = 0   
    
 #Simulation parameters
 dt  = 1e-3
-ndt = 1
+ndt = 5
 simulation_time = 2.0
 USE_REAL_STATE = 0       # use real state for controller feedback
+T_DISTURB_BEGIN = 0.5           # Time at which the disturbance starts
+T_DISTURB_END   = 0.51          # Time at which the disturbance ends
+F_DISTURB = np.matrix([200.,0.,0.]).T
+
 #robot parameters
 tauc = 0.*np.array([1.,1.,1.,1.])#coulomb friction
 Ky = 23770.
@@ -118,31 +86,25 @@ By = 50. *0.
 Bz = 500.*0.
 Kspring = -np.diagflat([Ky,Kz,0.])     # Stiffness of the feet spring
 Bspring = -np.diagflat([By,Bz,0.])     # damping of the feet spring
-g = 9.81                               # gravity acceleration
-g_vec = np.array([0.0, -g])            # gravity acc vector
-
 
 #Controller parameters
 fc_dtau_filter = 100.           # cutoff frequency of the filter applyed to the finite differences of the torques 
 FLEXIBLE_CONTROLLER = True      # if True it uses the controller for flexible contacts
-DISTURB = 1                     # if True disturb the motion with an external force
 fc      = np.inf                # cutoff frequency of the Force fiter
 Ktau    = 2.0                   # torque proportional feedback gain
 Kdtau   = 2.*sqrt(Ktau)*0.00    # Make it unstable ??
 Kp_post = 10                    # postural task proportional feedback gain
-Kp_com  = 30                    # com proportional feedback gain
-Kd_com = 2*sqrt(Kp_com)         # com derivative feedback gain
 if(FLEXIBLE_CONTROLLER):
     w_post  = 0.1
+    (Kp_com, Kd_com, Ka_com, Kj_com) = (1.20e+06, 1.54e+05, 7.10e+03, 1.40e+02)
 else:
     w_post = 0.001                  # postural task weight
+    Kp_com = 30                    # com proportional feedback gain
+    Kd_com = 2*sqrt(Kp_com)         # com derivative feedback gain
+    
 COM_REF_START = [0.00, 0.53]
-COM_REF_END   = [0.03, 0.53]
+COM_REF_END   = [0.00, 0.53]
 COM_TRAJ_TIME = 1.0
-
-#Grid of gains to try:
-Kp_coms = []    # np.linspace(1,100,50)
-Kd_coms = []    # np.linspace(1,500,50)
 
 #Simulator
 simu = Simu(robot,dt=dt,ndt=ndt)
@@ -156,7 +118,8 @@ NQ,NV,NB,RF,LF,RK,LK = simu.NQ,simu.NV,simu.NB,simu.RF,simu.LF,simu.RK,simu.LK
 #initial state
 q0 = robot.q0.copy()
 v0 = zero(NV)
-
+g_vec = robot.model.gravity.linear[1:].A1            # gravity acc vector
+g = np.linalg.norm(g_vec)                            # gravity acceleration
 se3.computeAllTerms(robot.model,robot.data,q0,v0)
 m = robot.data.mass[0] 
 q0[1]-=0.5*m*g/Kz
@@ -165,8 +128,8 @@ c0,dc0,ddc0,dddc0 = robot.get_com_and_derivatives(q0,v0,f0,df0)
 l0 = 0
 
 dtau_fd_filter = FiniteDiff(dt)
-dtau_lp_filter = FIR1LowPass(np.exp(-2*np.pi*fc_dtau_filter*dt)) # Force sensor filter
-FTSfilter      = FIR1LowPass(np.exp(-2*np.pi*fc*dt))             # Force sensor filter
+dtau_lp_filter = FIR1LowPass(np.exp(-2*pi*fc_dtau_filter*dt)) # Force sensor filter
+FTSfilter      = FIR1LowPass(np.exp(-2*pi*fc*dt))             # Force sensor filter
 
 #Noise applied on the state to get a simulated measurement
 ns = NoisyState(dt,robot,Ky,Kz)
@@ -183,29 +146,13 @@ sigma_l  = 1e-1*ones(1)             # angular momentum measurement noise std dev
 sigma_f  = np.array([ns.std_fy, ns.std_fz, ns.std_fy, ns.std_fz])  # force measurement noise std dev
 S_0 = sigma_x_0**2 * np.eye(n_x)
 
-#to be replaced with EKF momentum estimator
-stddev_p = sigma_c[0]
-stddev_v = ns.std_gyry #gyro noise
-stddev_a = ns.std_fz / m #fts noise / m
-estimator = Kalman(dt, stddev_p,stddev_v,stddev_a, 1e2, c0,dc0,ddc0,dddc0)
-
-# MomentumEKF works with array...
 centroidalEstimator = MomentumEKF(dt, m, g_vec, c0.A1, dc0.A1, np.array([l0]), f0.A1, S_0, sigma_c, sigma_dc, sigma_l, sigma_f, sigma_ddf)
-
-#~ estimator = None
-#~ b, a = np.array ([0.00554272,  0.01108543,  0.00554272]), np.array([1., -1.77863178,  0.80080265])
-#~ FTSfilter = BALowPass(b,a,"butter_lp_filter_Wn_05_N_2")  
 
 log_size = int(simulation_time / dt)    #max simulation samples
 log_t        = np.zeros([log_size,1])+np.nan  # time
 log_index = 0  
 
 if FLEXIBLE_CONTROLLER:
-    # Kp_com, Kd_com, Ka_com, Kj_com = 1, 2.7, 3.4, 2.1
-    # Kp_post = 1e-6
-    (Kp_com, Kd_com, Ka_com, Kj_com) = (1.20e+06, 1.54e+05, 7.10e+03, 1.40e+02)
-    #~ Kp_com,Kd_com,Ka_com,Kj_com = 2.4e+09, 5.0e+07, 3.5e+05, 1.0e+03
-    #~ Kp_com,Kd_com,Ka_com,Kj_com = 17160.0,  6026.0,   791.0,    46.  
     tsid=TsidFlexibleContact(robot,Ky,Kz,w_post,Kp_post,Kp_com, Kd_com, Ka_com, Kj_com, centroidalEstimator)
 else:
     tsid=Tsid(robot,Ky,Kz,Kp_post,Kp_com,w_post)
@@ -240,7 +187,6 @@ lgr.auto_log_local_variables(['df'], [vc], log_var_names=[['lkdf_sensor_0', 'lkd
     
 def loop(q, v, f, df, niter, ndt=None, dt=None, tsleep=.9, fdisplay=100):
     global log_index
-    last_vlf, last_vrf = np.matrix([0,0,0]).T, np.matrix([0,0,0]).T;
     last_df  = np.matrix(np.zeros(4)).T
     ddf_des = np.zeros(4)
     t0 = time.time()
@@ -267,15 +213,6 @@ def loop(q, v, f, df, niter, ndt=None, dt=None, tsleep=.9, fdisplay=100):
         last_df = df
         
         lgr.log_all(locals())
-        
-        lgr.add_vector((simu.vlf-last_vlf).A1/simu.dt, 'a_lf_fd')   # feet accelerations via finite differences
-        lgr.add_vector((simu.vrf-last_vrf).A1/simu.dt, 'a_rf_fd')
-        last_vlf, last_vrf = simu.vlf, simu.vrf
-        
-        # get feet positions
-        Mlf,Mrf = robot.get_Mlf_Mrf(q)
-        lgr.add_vector(Mlf.translation[1:3].A1, 'p_lf')
-        lgr.add_vector(Mrf.translation[1:3].A1, 'p_rf')        
 
         if not i % fdisplay:
             robot.display(q)
@@ -291,57 +228,6 @@ control = controller
 q,v,f,df = q0.copy(), v0.copy(), f0.copy(), df0.copy()
 q,v = loop(q,v,f,df,log_size)
 
-result = ""
-KpKd = []
-stab_grid = np.zeros([len(Kp_coms),len(Kd_coms)])+np.nan
-Kp_grid = np.zeros([len(Kp_coms),len(Kd_coms)])+np.nan
-Kd_grid = np.zeros([len(Kp_coms),len(Kd_coms)])+np.nan
-i=0
-for Kp_com in Kp_coms:
-    j=0
-    for Kd_com in Kd_coms:
-        #change controller gains
-        tsid.Kp_com, tsid.Kd_com = Kp_com, Kd_com
-        
-        #reset all entity with internal states
-        simu.reset()
-        FTSfilter.reset()
-        dtau_fd_filter.reset()
-        dtau_lp_filter.reset()
-        
-        #start from initial state
-        q,v,f,df = q0.copy(), v0.copy(), f0.copy(), df0.copy()
-        isstable = True
-        
-        #simulate and test stability
-        try:
-            q,v = loop(q,v,f,df,log_size)
-        except ValueError:
-            isstable=False
-
-        print "Kp_com={}, Kd_com={}, Stable? {}".format(Kp_com, Kd_com, isstable)
-        KpKd.append([Kp_com,Kd_com])
-        stab_grid[i,j] = isstable
-        Kp_grid[i,j], Kd_grid[i,j] = Kp_com, Kd_com
-        
-        if isstable:
-            result += "*"
-        else:
-            result += "-"
-        print result
-        j+=1
-    result += "\n"
-    i+=1
-    
-if i !=0:
-    #save the stability region plot and data
-    num = int(time.time()) #simple unique increasing timestamp
-    outDir = "./data/{}/".format(num)
-    os.makedirs(outDir)
-    np.savez(outDir + "stab.npz", Kd_grid=Kd_grid, Kp_grid=Kp_grid, stab_grid=stab_grid)
-    plot_gain_stability(Kd_grid,Kp_grid,stab_grid)
-    plt.savefig(outDir + "stab.png")
-    plt.show()
 
 if PLOT_COM_AND_FORCES:
     f, ax = plt.subplots(3,1,sharex=True);
@@ -357,27 +243,27 @@ if PLOT_COM_AND_FORCES:
     plt.text(0.1, 0.05, infostr,
             bbox={'facecolor':'white', 'alpha':0.8, 'pad':10})
     plt.title('com tracking Y')
-    plt.plot(log_t, lgr.tsid_com_p_mes_0, label="measured com")
-    plt.plot(log_t, lgr.tsid_com_p_err_0, label="com error")
+    plt.plot(log_t, lgr.com_p_0, label="com")
+#    plt.plot(log_t, lgr.tsid_com_p_err_0, label="com error")
     plt.plot(log_t, lgr.tsid_comref_0,    label="com ref")
     plt.legend()
     plt.subplot(312, sharex=ax1)
     plt.title('feet forces Y') 
-    plt.plot(log_t, lgr.get_streams('lkf_sensor_0'),label="real force",color='b')
-    plt.plot(log_t, lgr.get_streams('rkf_sensor_0'),label="real force",color='r')
-    plt.plot(log_t, lgr.ekf_f_0, '--', label="ekf left force 0")
-    plt.plot(log_t, lgr.ekf_f_2, '--', label="ekf right force 0")
-#    plt.plot(log_t, lgr.tsid_lkf_0, label="des force",color='b',linestyle=':')
-#    plt.plot(log_t, lgr.tsid_rkf_0, label="des force",color='r',linestyle=':')
+    plt.plot(log_t, lgr.get_streams('lkf_sensor_0'),label="left force", color='b')
+    plt.plot(log_t, lgr.get_streams('rkf_sensor_0'),label="right force", color='r')
+    plt.plot(log_t, lgr.ekf_f_0, '--', label="ekf left force")
+    plt.plot(log_t, lgr.ekf_f_2, '--', label="ekf right force")
+    plt.plot(log_t, lgr.tsid_lkf_0, label="left des force", linestyle=':')
+    plt.plot(log_t, lgr.tsid_rkf_0, label="right des force", linestyle=':')
     plt.legend()
     plt.subplot(313, sharex=ax1)
     plt.title('feet forces Z')
-    plt.plot(log_t, lgr.get_streams('lkf_sensor_1'),label="real force",color='b')
-    plt.plot(log_t, lgr.get_streams('rkf_sensor_1'),label="real force",color='r')
-    plt.plot(log_t, lgr.ekf_f_1, '--', label="ekf left force 1")
-    plt.plot(log_t, lgr.ekf_f_3, '--', label="ekf right force 1")
-#    plt.plot(log_t, lgr.tsid_lkf_1, label="des force",color='b',linestyle=':')
-#    plt.plot(log_t, lgr.tsid_rkf_1, label="des force",color='r',linestyle=':')
+    plt.plot(log_t, lgr.get_streams('lkf_sensor_1'), label="left force", color='b')
+    plt.plot(log_t, lgr.get_streams('rkf_sensor_1'), label="right force", color='r')
+    plt.plot(log_t, lgr.ekf_f_1, '--', label="ekf left force")
+    plt.plot(log_t, lgr.ekf_f_3, '--', label="ekf right force")
+    plt.plot(log_t, lgr.tsid_lkf_1, label="left des force", linestyle=':')
+    plt.plot(log_t, lgr.tsid_rkf_1, label="right des force", linestyle=':')
     plt.legend()
 #    plt.show()
 
@@ -387,30 +273,27 @@ if PLOT_COM_DERIVATIVES :
     for i in [0,1]:
         f, ax = plt.subplots(5,1,sharex=True);
         ax1 = plt.subplot(511)
-#        plt.plot(log_t, lgr.get_streams('tsid_com_p_mes_'+str(i)), label="measured com "+axe_label[i])
-        plt.plot(log_t, lgr.get_streams('tsid_com_p_est_'+str(i)), label="estimated com "+axe_label[i])
-        plt.plot(log_t, lgr.get_streams('ekf_c_'+str(i)),          label="ekf com "+axe_label[i])
         plt.plot(log_t, lgr.get_streams('com_p_'+str(i)), label="com " + axe_label[i]) 
+        plt.plot(log_t, lgr.get_streams('tsid_com_p_est_'+str(i)), '--', label="estimated com "+axe_label[i])
+#        plt.plot(log_t, lgr.get_streams('tsid_com_p_mes_'+str(i)), label="measured com "+axe_label[i])        
+#        plt.plot(log_t, lgr.get_streams('ekf_c_'+str(i)),          label="ekf com "+axe_label[i])        
         plt.legend()
         plt.subplot(512,sharex=ax1)
-#        plt.plot(log_t, lgr.get_streams('tsid_com_v_mes_'+str(i)), label="measured vcom "+ axe_label[i]) 
-        plt.plot(log_t, lgr.get_streams('tsid_com_v_est_'+str(i)), label="estimated vcom "+ axe_label[i]) 
-        plt.plot(log_t, lgr.get_streams('ekf_dc_'+str(i)),          label="ekf vcom "+axe_label[i])
         plt.plot(log_t, lgr.get_streams('com_v_'+str(i)), label="vcom "+ axe_label[i]) 
-#        plt.plot(log_t, finite_diff(lgr.get_streams('com_p_'+str(i)), dt),':', label="finite diff com " + axe_label[i]) 
+        plt.plot(log_t, lgr.get_streams('tsid_com_v_est_'+str(i)), '--', label="estimated vcom "+ axe_label[i]) 
+#        plt.plot(log_t, lgr.get_streams('tsid_com_v_mes_'+str(i)), label="measured vcom "+ axe_label[i])         
+#        plt.plot(log_t, lgr.get_streams('ekf_dc_'+str(i)),          label="ekf vcom "+axe_label[i])        
         plt.legend()
         plt.subplot(513,sharex=ax1)
-#        plt.plot(log_t, lgr.get_streams('tsid_com_a_mes_'+str(i)), label="measured acom "+ axe_label[i]) 
-        plt.plot(log_t, lgr.get_streams('tsid_com_a_est_'+str(i)), label="estimated acom "+ axe_label[i]) 
+        plt.plot(log_t, lgr.get_streams('com_a_'+str(i)), label="acom "+ axe_label[i]) 
+        plt.plot(log_t, lgr.get_streams('tsid_com_a_est_'+str(i)), '--', label="estimated acom "+ axe_label[i]) 
+#        plt.plot(log_t, lgr.get_streams('tsid_com_a_mes_'+str(i)), label="measured acom "+ axe_label[i])         
         if not FLEXIBLE_CONTROLLER :
             plt.plot(log_t, lgr.get_streams('tsid_com_a_des_'+str(i)), label="desired acom" + axe_label[i])
-        plt.plot(log_t, lgr.get_streams('com_a_'+str(i)), label="acom "+ axe_label[i]) 
-#        plt.plot(log_t, finite_diff(lgr.get_streams('com_v_'+str(i)),dt), ':', label="finite diff vcom " + axe_label[i]) 
         plt.legend()
         plt.subplot(514,sharex=ax1)
-        plt.plot(log_t, lgr.get_streams('tsid_com_j_est_'+str(i)), label="estimated jcom "+ axe_label[i]) 
         plt.plot(log_t, lgr.get_streams('com_j_'+str(i)), label="jcom "+ axe_label[i]) 
-#        plt.plot(log_t, finite_diff(lgr.get_streams('com_a_'+str(i)), dt),':', label="finite diff acom " + axe_label[i])
+        plt.plot(log_t, lgr.get_streams('tsid_com_j_est_'+str(i)), '--', label="estimated jcom "+ axe_label[i]) 
         plt.legend()
         plt.subplot(515,sharex=ax1)
         if FLEXIBLE_CONTROLLER :
@@ -419,7 +302,6 @@ if PLOT_COM_DERIVATIVES :
         #~ plt.plot(log_t,log_lkf_sensor[:,1], label="force Left z")
         #~ plt.plot(log_t,log_rkf_sensor[:,1], label="force Right z")
         plt.legend()
-#        plt.show()
 
 if PLOT_ANGULAR_MOMENTUM_DERIVATIVES:
     f, ax = plt.subplots(5,1,sharex=True);
@@ -445,38 +327,6 @@ if PLOT_ANGULAR_MOMENTUM_DERIVATIVES:
 
 plt.show()
 
-#~ plt.plot(log_a_lf_fd, label = "a_lf_fd")
-#~ plt.plot(log_a_rf_fd, label = "a_rf_fd")
-#~ plt.plot(log_a_lf_jac, label = "a_lf_jac")
-#~ plt.plot(log_a_rf_jac, label = "a_rf_jac")
-
-#log_a_lf_fd[0]=np.nan
-#log_a_rf_fd[0]=np.nan
-#plt.plot(log_a_lf_fd[:,:2], label = "log_a_lf_fd")
-#plt.plot(log_a_lf_jac[:,:2], label = "a_lf_jac")
-#plt.plot(log_a_lf_des, label = "log_a_lf_des")
-#plt.legend()
-#plt.show()
-
-#plt.plot(log_dv_simu[:] - log_dv_tsid[:], label = "dv_simu-dv_tsid")
-#plt.legend()
-#plt.show()
-
-#~ plt.plot(log_t,log_v_lf,label="lf vel" + axe_label[i])
-#~ plt.plot(log_t,log_v_rf,label="rf vel" + axe_label[i])
-#~ plt.plot(log_t,finite_diff(log_p_lf,dt),':',lw=2, label="fd lf pos")
-#~ plt.plot(log_t,finite_diff(log_p_rf,dt),':',lw=2, label="fd rf pos")
-#~ plt.legend()
-#~ plt.show()
-
-#~ plt.plot(log_t,log_robotInertia)
-#~ plt.show()
-
-#~ plt.plot(log_t,log_tau_est, label="tau estimated via contact forces")
-#~ plt.plot(log_t,log_tau_est_fd,label="finite differences of tau")
-#~ plt.plot(log_t,1+log_dtau_est,label="filtered finite differences of tau")
-#~ plt.legend()
-#~ plt.show()
 try:
     embed()
 except:

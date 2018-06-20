@@ -36,7 +36,7 @@ class TsidFlexibleContact:
         self.Kj_com = Kj_com
         self.Ky = Ky
         self.Kz = Kz
-        self.ddf_des = np.matrix(np.zeros(4))
+        self.ddf_des = matlib.zeros(4)
         self.data = Empty()
         self.data.com_s_des = np.matrix([0.,0.]).T.A1 #need for update the com estimator at first iteration
         com_p_ref = np.matrix([0.,0.53]).T
