@@ -83,9 +83,11 @@ class Simu:
         tauq = tauq.copy()
         robot = self.robot
         NQ,NV,NB,RF,LF,RK,LK = self.NQ,self.NV,self.NB,self.RF,self.LF,self.RK,self.LK
+        
         if self.first_iter: 
             self.compute_f_df_from_q_v(q,v)
             self.first_iter = False
+            
         for i in range(3,7):
             if v[i]<0:
                 tauq[i]+=self.tauc[i-4]
@@ -102,16 +104,11 @@ class Simu:
         h  = robot.data.nle      #(7,1)
         Jl,Jr = robot.get_Jl_Jr_world(q)
         Jc = np.vstack([Jl[1:3],Jr[1:3]])    # (4, 7)
-        S  = np.hstack([np.zeros([4,3]),np.eye(4)]) # (4,7)
         dv = np.linalg.inv(M)*(tauq-h+Jc.T*self.f) #use last forces
-        #~ print 'SIMULATOR pre integration'
-        #~ embed()
         v += dv*dt
         q   = se3.integrate(robot.model,q,v*dt)
         self.compute_f_df_from_q_v(q,v, False)
         self.dv = dv
-        #~ print 'SIMULATOR post integration'
-        #~ embed()
         return q,v
         
     def reset(self):

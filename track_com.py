@@ -55,24 +55,10 @@ if useViewer:
     robot.viewer.setCameraTransform(0,[1.9154722690582275, -0.2266872227191925, 0.1087859719991684,
                                        0.5243823528289795, 0.518651008605957, 0.4620114266872406, 0.4925136864185333])
 
-#Plots
-PLOT_FORCES                         = 1
-PLOT_COM_DERIVATIVES                = 1
-PLOT_ANGULAR_MOMENTUM_DERIVATIVES   = 0   
-PLOT_JOINT_TORQUES                  = 0
-   
 #Simulation parameters
 dt  = 1e-3
 ndt = 5
 simulation_time = 2.0
-USE_REAL_STATE = 0       # use real state for controller feedback
-T_DISTURB_BEGIN = 0.50          # Time at which the disturbance starts
-T_DISTURB_END   = 0.51          # Time at which the disturbance ends
-F_DISTURB = np.matrix([0*5e2, 0, 0]).T
-
-COM_REF_START = [0.001,      0.527]
-COM_REF_END   = [0.001+0.03, 0.527]
-COM_TRAJ_TIME = 1.0
 
 #robot parameters
 tauc = 0.*np.array([1.,1.,1.,1.])#coulomb friction
@@ -82,6 +68,41 @@ By = 50e0
 Bz = 500e0
 Kspring = -np.diagflat([Ky,Kz,0.])     # Stiffness of the feet spring
 Bspring = -np.diagflat([By,Bz,0.])     # damping of the feet spring
+
+#Simulator
+simu = Simu(robot,dt=dt,ndt=ndt)
+simu.tauc = tauc
+simu.Krf, simu.Klf = Kspring, Kspring
+simu.Brf, simu.Blf = Bspring, Bspring
+# size of configuration vector (NQ), velocity vector (NV), number of bodies (NB)
+NQ,NV,NB,RF,LF,RK,LK = simu.NQ,simu.NV,simu.NB,simu.RF,simu.LF,simu.RK,simu.LK
+
+#initial state
+q0 = robot.q0.copy()
+v0 = zero(robot.model.nv)
+g_vec = robot.model.gravity.linear[1:].A1            # gravity acc vector
+g = np.linalg.norm(g_vec)                            # gravity acceleration
+se3.computeAllTerms(robot.model,robot.data,q0,v0)
+m = robot.data.mass[0] 
+q0[1]-=0.5*m*g/Kz
+f0,df0 = simu.compute_f_df_from_q_v(q0,v0)
+c0,dc0,ddc0,dddc0 = robot.get_com_and_derivatives(q0,v0,f0,df0)
+l0 = 0
+
+#Plots
+PLOT_FORCES                         = 1
+PLOT_COM_DERIVATIVES                = 1
+PLOT_ANGULAR_MOMENTUM_DERIVATIVES   = 0   
+PLOT_JOINT_TORQUES                  = 0   
+
+USE_REAL_STATE = 0       # use real state for controller feedback
+T_DISTURB_BEGIN = 0.50          # Time at which the disturbance starts
+T_DISTURB_END   = 0.51          # Time at which the disturbance ends
+F_DISTURB = np.matrix([0*5e2, 0, 0]).T
+
+COM_REF_START = c0.A1 #[0.001,      0.527]
+COM_REF_END   = c0.A1 + np.array([0.03, 0.0])
+COM_TRAJ_TIME = 1.0
 
 #Controller parameters
 fc_dtau_filter = 100.           # cutoff frequency of the filter applyed to the finite differences of the torques 
@@ -101,30 +122,6 @@ else:
     w_post = 0.001                  # postural task weight
     Kp_com = 30                    # com proportional feedback gain
     Kd_com = 2*sqrt(Kp_com)         # com derivative feedback gain
-
-#Simulator
-simu = Simu(robot,dt=dt,ndt=ndt)
-simu.tauc = tauc
-simu.Krf, simu.Klf = Kspring, Kspring
-simu.Brf, simu.Blf = Bspring, Bspring
-
-# size of configuration vector (NQ), velocity vector (NV), number of bodies (NB)
-NQ,NV,NB,RF,LF,RK,LK = simu.NQ,simu.NV,simu.NB,simu.RF,simu.LF,simu.RK,simu.LK
-
-#initial state
-q0 = robot.q0.copy()
-v0 = zero(NV)
-g_vec = robot.model.gravity.linear[1:].A1            # gravity acc vector
-g = np.linalg.norm(g_vec)                            # gravity acceleration
-se3.computeAllTerms(robot.model,robot.data,q0,v0)
-m = robot.data.mass[0] 
-q0[1]-=0.5*m*g/Kz
-f0,df0 = simu.compute_f_df_from_q_v(q0,v0)
-c0,dc0,ddc0,dddc0 = robot.get_com_and_derivatives(q0,v0,f0,df0)
-l0 = 0
-
-#COM_REF_START = c0.A1
-#COM_REF_END   = c0.A1
 
 dtau_fd_filter = FiniteDiff(dt)
 dtau_lp_filter = FIR1LowPass(np.exp(-2*pi*fc_dtau_filter*dt)) # Force sensor filter
