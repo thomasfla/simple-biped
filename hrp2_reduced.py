@@ -285,10 +285,36 @@ class Hrp2Reduced:
         return Jam;
     
     def get_angularMomentum(self, q, v, update=True):
-        Jam = self.get_angularMomentumJacobian(q,v, update)
-        robotInertia = Jam[0,2] 
+        Jam = self.get_angularMomentumJacobian(q, v, update)
         am = (Jam*v).A1[0]
         return am
+        
+    def get_angular_momentum_and_derivatives(self, q, v, f=None, df=None, Ky=None, Kz=None, recompute=True):
+        Mlf, Mrf = self.get_Mlf_Mrf(q, recompute)
+        com_state = self.get_com_and_derivatives(q, v, f, df, recompute)
+        Jam = self.get_angularMomentumJacobian(q,v)  
+        
+        pyl, pzl = Mlf.translation[1:].A1
+        pyr, pzr = Mrf.translation[1:].A1
+        cy, cz     = com_state[0].A1
+        dcy, dcz   = com_state[1].A1
+        am = (Jam*v).A1[0]
+#        robotInertia = Jam[0,2] 
+#        theta = np.arctan2(q[3],q[2])
+#        iam   = robotInertia * theta
+        if(f is None):
+            return am
+        
+        fyl, fzl, fyr, fzr = f.A1
+        ddcy, ddcz = com_state[2].A1  
+        dam   = (pyl-cy)*fzl                  -  (pzl-cz)*fyl                  + (pyr-cy)*fzr                 -  (pzr-cz)*fyr
+        if(df is None):
+            return a, dam
+            
+        dfyl, dfzl, dfyr, dfzr = df.A1
+        dpyl, dpzl, dpyr, dpzr = -dfyl/Ky, -dfzl/Kz, -dfyr/Ky, -dfzr/Kz
+        ddam  = (dpyl-dcy)*fzl+(pyl-cy)*dfzl - ((dpzl-dcz)*fyl+(pzl-cz)*dfyl) + (dpyr-dcy)*fzr+(pyr-cy)*dfzr - ((dpzr-dcz)*fyr+(pzr-cz)*dfyr)
+        return am, dam, ddam
         
     def get_com_and_derivatives(self, q, v, f=None, df=None, recompute=True):
         '''Compute the CoM position, velocity, acceleration and jerk from 
