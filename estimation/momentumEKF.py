@@ -231,7 +231,7 @@ class MomentumEKF(ExtendedKalmanFilter):
             self.F[il: il+na, i_f+i*nl: i_f+(i+1)*nl] = dt_pixc - half_dt_sq_dc
             self.F[il: il+na, idf+i*nl: idf+(i+1)*nl] = 0.5*dt*dt_pixc
             
-    def predict_update(self, c, dc, l, f, p, ddf):
+    def predict_update(self, c, dc, l, f, p, ddf=None):
         """ Performs the predict/update innovation of the EKF.
 
         Parameters
@@ -264,6 +264,8 @@ class MomentumEKF(ExtendedKalmanFilter):
         R = self.R
 
         # predict step
+        if(ddf is None):
+            ddf = np.zeros(self.dim_u)
         self.x = self.predict_x(self.x, p, ddf)
         P = dot(F, P).dot(F.T) + Q
 
@@ -284,7 +286,6 @@ class MomentumEKF(ExtendedKalmanFilter):
 
 
     def compute_dynamics_jac_by_fd(self, x, p, u=0, delta=1e-5):
-        x_0 = np.copy(x)
         f = self.predict_x(x, p, u)
         J = np.zeros((self.dim_x, self.dim_x))
         
