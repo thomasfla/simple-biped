@@ -77,8 +77,6 @@ simu = Simu(robot,dt=dt,ndt=ndt)
 simu.tauc = tauc
 simu.Krf, simu.Klf = Kspring, Kspring
 simu.Brf, simu.Blf = Bspring, Bspring
-# size of configuration vector (NQ), velocity vector (NV), number of bodies (NB)
-NQ,NV,NB,RF,LF,RK,LK = simu.NQ,simu.NV,simu.NB,simu.RF,simu.LF,simu.RK,simu.LK
 
 #initial state
 q0 = robot.q0.copy()
@@ -101,18 +99,14 @@ PLOT_JOINT_TORQUES                  = 0
 USE_REAL_STATE = 0       # use real state for controller feedback
 T_DISTURB_BEGIN = 0.50          # Time at which the disturbance starts
 T_DISTURB_END   = 0.51          # Time at which the disturbance ends
-F_DISTURB = np.matrix([5e2, 0, 0]).T
+F_DISTURB = np.matrix([0*5e2, 0, 0]).T
 
 COM_REF_START = c0.A1
-COM_REF_END   = c0.A1 + np.array([0.0, 0.0])
+COM_REF_END   = c0.A1 + np.array([0.03, 0.0])
 COM_TRAJ_TIME = 1.0
 
 #Controller parameters
-fc_dtau_filter = 100.           # cutoff frequency of the filter applyed to the finite differences of the torques 
 CONTROLLER = 'tsid_flex'             # either 'tsid' or 'tsid_flex' or 'tsid_adm'
-fc      = np.inf                # cutoff frequency of the Force fiter
-Ktau    = 2.0                   # torque proportional feedback gain
-Kdtau   = 2.*sqrt(Ktau)*0.00    # Make it unstable ??
 Kp_post = 10                    # postural task proportional feedback gain
 if(CONTROLLER=='tsid_flex'):
     w_post  = 0.1
@@ -128,10 +122,6 @@ elif(CONTROLLER=='tsid_adm'):
     Kd_com = 2*sqrt(Kp_com)         # com derivative feedback gain
     Kp_adm = 400.0
     Kd_adm = 2*sqrt(Kp_adm)
-
-dtau_fd_filter = FiniteDiff(dt)
-dtau_lp_filter = FIR1LowPass(np.exp(-2*pi*fc_dtau_filter*dt)) # Force sensor filter
-FTSfilter      = FIR1LowPass(np.exp(-2*pi*fc*dt))             # Force sensor filter
 
 #Noise applied on the state to get a simulated measurement
 ns = NoisyState(dt,robot,Ky,Kz)
@@ -250,9 +240,9 @@ if PLOT_COM_DERIVATIVES :
     ax_lbl = {0:'Y', 1:'Z'}    
     for i in [0,1]:
         fields, labels, linest = [], [], []
-        fields += [['com_p_'+str(i),  'tsid_com_p_est_'+str(i)]]
-        labels += [['com '+ax_lbl[i], 'estimated com '+ax_lbl[i]]]
-        linest += [[None, '--']]
+        fields += [['com_p_'+str(i),  'tsid_com_p_est_'+str(i), 'tsid_comref_'+str(i)]]
+        labels += [['com '+ax_lbl[i], 'estimated com '+ax_lbl[i], 'ref com '+ax_lbl[i]]]
+        linest += [[None, '--', ':']]
         fields += [['com_v_'+str(i),      'tsid_com_v_est_'+str(i)]]
         labels += [['com vel '+ax_lbl[i], 'estimated com vel '+ax_lbl[i]]]
         linest += [[None, '--']]
