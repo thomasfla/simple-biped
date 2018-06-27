@@ -18,7 +18,7 @@ class Tsid:
     
     HESSIAN_REGULARIZATION = 1e-8
     
-    def __init__(self, robot, Ky, Kz, Kp_post, Kp_com, w_post, estimator=None):
+    def __init__(self, robot, Ky, Kz, w_post, w_force, Kp_post, Kp_com, estimator=None):
         self.robot = robot
         self.estimator = estimator
         self.NQ = robot.model.nq
@@ -33,7 +33,7 @@ class Tsid:
         self.Kz = Kz
         
         self.w_post = w_post
-        self.w_force = 1e-2
+        self.w_force = w_force
         self.Kp_post = Kp_post
         self.Kd_post = 2*sqrt(Kp_post)
         self.Kp_com = Kp_com
@@ -51,13 +51,11 @@ class Tsid:
             V=2*sqrt(P)
         self.P,self.V = P,V
             
-    def solve(self, t, q, v, fc):
+    def solve(self, t, q, v, f_meas, df_meas=None):
         robot=self.robot
         NQ,NV,NB,RF,LF,RK,LK = self.NQ,self.NV,self.NB,self.RF,self.LF,self.RK,self.LK
-        w_post = self.w_post
         Kp_post, Kd_post = self.Kp_post, self.Kd_post
         Kp_com,  Kd_com  = self.Kp_com,  self.Kd_com
-        callback_com = self.callback_com
 
         se3.computeAllTerms(robot.model,robot.data,q,v)
         se3.framesKinematics(robot.model,robot.data,q)
@@ -67,6 +65,17 @@ class Tsid:
         h = robot.data.nle      #(7,1)
         Jl,Jr = robot.get_Jl_Jr_world(q, False)
         Mlf, Mrf = robot.get_Mlf_Mrf(q, False)
+        
+        if(self.estimator is None):
+            com_mes, com_v_mes = robot.get_com_and_derivatives(q, v)
+            am_est = robot.get_angularMomentum(q, v)
+            com_est, com_v_est, f_est, df_est = com_mes, com_v_mes, f_meas, df_meas
+        else:
+            com_mes, com_v_mes, com_a_mes = robot.get_com_and_derivatives(q, v, f_meas)
+            am = robot.get_angularMomentum(q, v)
+            p = np.hstack((Mlf.translation[1:].A1, Mrf.translation[1:].A1))
+            self.estimator.predict_update(com_mes.A1, com_v_mes.A1, np.array([am]), f_meas.A1, p)            
+            (com_est, com_v_est, am_est, f_est, df_est) = self.estimator.get_state(True)
 
         # Formulate contact and dynamic constrains *********************
         #        7    4     4       7  4  4
@@ -77,7 +86,9 @@ class Tsid:
         S  = np.hstack([np.zeros([4,3]),np.eye(4)]) # (4,7)
         z1 = np.matrix(np.zeros([4,4]))
         z2 = np.matrix(np.zeros([4,4]))
-
+        z3 = np.matrix(np.zeros([2,4+4]))
+        z4 = np.matrix(np.zeros([4,4+4]))
+        
         driftLF,driftRF = robot.get_driftLF_driftRF_world(q,v, False)
         dJcdq = np.vstack([driftLF.vector[1:3],driftRF.vector[1:3]])
 
@@ -86,38 +97,30 @@ class Tsid:
         bec = np.vstack([-dJcdq,-h])
         
         #friction cone constrains
-        mu = 0.5 # need more realistic value !!!!!!!!!!!!!!!!!!!!!!!!!!!
-        Aic = np.zeros([4,15])
-        bic = np.zeros([4,1])
-
-        # mu*Fz+Fy >0
-        Aic[0, 8] = mu  
-        Aic[0, 7] = 1.0
-        # mu*Fz-Fy >0
-        Aic[1,8] = mu  
-        Aic[1,7] = -1.0
-        # mu*Fz+Fy >0
-        Aic[2, 10] = mu  
-        Aic[2, 9] = 1.0
-        # mu*Fz-Fy >0
-        Aic[3,10] = mu  
-        Aic[3,9] = -1.0
+#        mu = 0.5 # need more realistic value !!!!!!!!!!!!!!!!!!!!!!!!!!!
+#        Aic = np.zeros([4,15])
+#        bic = np.zeros([4,1])
+#
+#        # mu*Fz+Fy >0
+#        Aic[0, 8] = mu  
+#        Aic[0, 7] = 1.0
+#        # mu*Fz-Fy >0
+#        Aic[1,8] = mu  
+#        Aic[1,7] = -1.0
+#        # mu*Fz+Fy >0
+#        Aic[2, 10] = mu  
+#        Aic[2, 9] = 1.0
+#        # mu*Fz-Fy >0
+#        Aic[3,10] = mu  
+#        Aic[3,9] = -1.0
         
         #CoM task ******************************************************
         Jcom = robot.data.Jcom[1:] #Only Y and Z
-
-        com_p_ref, com_v_ref, com_a_ref, com_j_ref, com_s_ref = callback_com(t)
-        com_mes, com_v_mes = robot.get_com_and_derivatives(q, v)
-        com_est, com_v_est = com_mes, com_v_mes #Todo use an estimator
-        
+        com_p_ref, com_v_ref, com_a_ref, com_j_ref, com_s_ref = self.callback_com(t)
         com_drift = robot.data.acom[0][1:]
         com_p_err =   com_est - com_p_ref
         com_v_err = com_v_est - com_v_ref
-
-        com_a_des = -Kp_com*com_p_err -Kd_com*com_v_err +com_a_ref
-
-        z3 = np.matrix(np.zeros([2,4+4]))
-
+        com_a_des = com_a_ref - Kp_com*com_p_err - Kd_com*com_v_err
         A_com  = np.hstack([Jcom,z3])
         b_com  = com_a_des - com_drift
         
@@ -126,51 +129,42 @@ class Tsid:
         post_p_ref = robot.q0[4:] #only the actuated part !
         post_v_ref = np.matrix([0,0,0,0]).T
         post_a_ref = np.matrix([0,0,0,0]).T
-
         post_p_err = q[4:] - post_p_ref
         post_v_err = v[3:] - post_v_ref
+        post_a_des = post_a_ref - Kp_post*post_p_err - Kd_post*post_v_err 
+        A_post  = self.w_post*np.hstack([Jpost,z4])
+        b_post  = self.w_post*post_a_des # -post_drift
         
-        post_a_des = -Kp_post*post_p_err - Kd_post*post_v_err 
-
-        z4 = np.matrix(np.zeros([4,4+4]))
-        A_post  = w_post*np.hstack([Jpost,z4])
-        b_post  = w_post*post_a_des # -post_drift
-        
+        # force regularization task *************************************************
         A_force = self.w_force*np.hstack([matlib.zeros((4,7)), matlib.eye(4), z1])
-        b_force = self.w_force*fc
+        b_force = self.w_force*f_est
 
         #stack all tasks
         A = np.vstack([A_com, A_post, A_force])
         b = np.vstack([b_com, b_post, b_force])
         
         #stack equality and inequality constrains
-        #~ Ac = np.vstack([Aec,Aic])
-        #~ bc = np.vstack([bec,bic])
+        # Ac = np.vstack([Aec,Aic])
+        # bc = np.vstack([bec,bic])
         Ac=Aec
         bc=bec
         
         #formulate the least square as a quadratic problem *************
         H=(A.T*A).T + self.HESSIAN_REGULARIZATION*np.eye(A.shape[1])
         g=(A.T*b).T
-
-        g  = np.squeeze(np.asarray(g))
-        bc = np.squeeze(np.asarray(bc))
-        bec = np.squeeze(np.asarray(bec))
         
         #solve it ******************************************************
         try:
-            y = solve_qp(H, g, Ac.T, bc, bec.shape[0])[0]
+            y = solve_qp(H.A, g.A1, Ac.A.T, bc.A1, bec.shape[0])[0]
             #~ y = solve_qp(H,g)[0] # without constrains !
             #~ y = np.squeeze(np.asarray(np.linalg.pinv(A)*b)) # without constrains with pinv!
         except ValueError:
-            print "Error while solving QP"
-            print "Singular values of Hessian", np.linalg.svd(H, compute_uv=0)
+            print "Error while solving QP. Singular values of Hessian:", np.linalg.svd(H, compute_uv=0)
             raise
 
         dv = np.matrix(y[:7]   ).T
         f   = np.matrix(y[7:7+4]).T
         tau = np.matrix(y[7+4:] ).T
-        
         
         #populate results
         #~ self.data.lf_a_des = np.matrix([0.,0.]).T 
