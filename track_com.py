@@ -9,8 +9,8 @@ import time
 from simu import Simu
 from utils.utils_thomas import restert_viewer_server, traj_sinusoid, finite_diff
 from utils.logger import RaiLogger
-from utils.filters import FIR1LowPass, FiniteDiff
 import matplotlib.pyplot as plt
+import utils.plot_utils as plut
 from utils.plot_utils import plot_from_logger
 from tsid import Tsid
 from tsid_admittance import TsidAdmittance
@@ -18,6 +18,7 @@ from tsid_flexible_contacts import TsidFlexibleContact
 from path import pkg, urdf 
 from utils.noise_utils import NoisyState
 from estimation.momentumEKF import MomentumEKF
+import getopt, sys, os, datetime
 
 try:
     from IPython import embed
@@ -30,13 +31,10 @@ np.set_printoptions(precision=3, linewidth=200)
 if useViewer:
     restert_viewer_server()
     
-def controller(q, v, f, df):
+def controller(t, q, v, f, df):
     ''' Take the sensor data (position, velocity and contact forces) 
     and generate a torque command '''
-    t=log_index*simu.dt
     tsid.solve(t, q, v, f, df)
-    if not log_index%100 :
-        print "t:%.1f \t com err %.3f\t tau norm %.0f" % (log_index*dt, norm(tsid.data.com_p_err), norm(tsid.data.tau))
     return np.vstack([f_disturb_traj(t), tsid.data.tau])
     
 def f_disturb_traj(t):
@@ -50,7 +48,55 @@ def com_traj(t, c_init, c_final, T):
     return (np.matrix([[py ],[pz]]), np.matrix([[vy ],[vz]]), 
             np.matrix([[ay ],[az]]), np.matrix([[jy ],[jz]]), np.matrix([[sy ],[sz]]))
     
+CONTROLLER = 'tsid_adm'             # either 'tsid' or 'tsid_flex' or 'tsid_adm'
+F_DISTURB = np.matrix([4e2, 0, 0]).T
+COM_SIN_AMP = np.array([0.0, 0.0])
 
+PLOT_FORCES                         = 1
+PLOT_COM_DERIVATIVES                = 1
+PLOT_ANGULAR_MOMENTUM_DERIVATIVES   = 1   
+PLOT_JOINT_TORQUES                  = 1   
+plut.SAVE_FIGURES                   = 1
+SAVE_DATA                           = 1
+SHOW_FIGURES                        = 0
+
+INPUT_PARAMS = ['controller=', 'com_sin_amp=', 'f_dist=']
+try:
+    opts, args = getopt.getopt(sys.argv[1:],"",INPUT_PARAMS)
+except getopt.GetoptError:
+    print "Error while parsing command-line arguments."
+    print 'Example of usage:'
+    print '    track_com.py --controller tsid_flex';
+    print 'These are the available input parameters:\n', INPUT_PARAMS;
+    sys.exit(2);
+    
+for opt, arg in opts:
+    if opt == '--controller':
+        CONTROLLER = str(arg);
+    elif opt == "--com_sin_amp":
+        COM_SIN_AMP[0] = float(arg);
+    elif opt == "--f_dist":
+        F_DISTURB[0,0] = float(arg);
+
+print "*** CURRENT CONFIGURATION ***"
+print "- controller = ", CONTROLLER
+print "- com_sin_amp =", COM_SIN_AMP[0]
+print "- f_dist =     ", F_DISTURB[0,0]
+print "\n"
+     
+TEST_DESCR_STR = CONTROLLER
+if(COM_SIN_AMP[0]!=0.0):
+    TEST_DESCR_STR += '_comSinAmp_'+str(COM_SIN_AMP[0])
+if(F_DISTURB[0,0]!=0.0):
+    TEST_DESCR_STR += '_fDist_'+str(F_DISTURB[0,0])
+    
+if(SAVE_DATA):
+    date_time = datetime.datetime.now().strftime('%Y%m%d_%H%M%S');
+    RESULTS_PATH = os.getcwd()+'/data/'+date_time+'_'+TEST_DESCR_STR+'/'
+    print "Gonna save results in folder:", RESULTS_PATH
+    os.makedirs(RESULTS_PATH);
+    plut.FIGURE_PATH = RESULTS_PATH
+    
 robot = Hrp2Reduced(urdf,[pkg],loadModel=True,useViewer=useViewer)
 robot.display(robot.q0)
 if useViewer:
@@ -59,8 +105,8 @@ if useViewer:
 
 #Simulation parameters
 dt  = 1e-3
-ndt = 5
-simulation_time = 3.0
+ndt = 10
+simulation_time = 4.0
 
 #robot parameters
 tauc = 0.*np.array([1.,1.,1.,1.])#coulomb friction
@@ -90,23 +136,15 @@ f0,df0 = simu.compute_f_df_from_q_v(q0,v0)
 c0,dc0,ddc0,dddc0 = robot.get_com_and_derivatives(q0,v0,f0,df0)
 l0 = 0
 
-#Plots
-PLOT_FORCES                         = 1
-PLOT_COM_DERIVATIVES                = 1
-PLOT_ANGULAR_MOMENTUM_DERIVATIVES   = 0   
-PLOT_JOINT_TORQUES                  = 0   
-
 USE_REAL_STATE = 0       # use real state for controller feedback
 T_DISTURB_BEGIN = 0.50          # Time at which the disturbance starts
 T_DISTURB_END   = 0.51          # Time at which the disturbance ends
-F_DISTURB = np.matrix([0*5e2, 0, 0]).T
 
 COM_REF_START = c0.A1
-COM_REF_END   = c0.A1 + np.array([0.03, 0.0])
+COM_REF_END   = c0.A1 + COM_SIN_AMP
 COM_TRAJ_TIME = 1.0
 
 #Controller parameters
-CONTROLLER = 'tsid_flex'             # either 'tsid' or 'tsid_flex' or 'tsid_adm'
 Kp_post = 10                    # postural task proportional feedback gain
 if(CONTROLLER=='tsid_flex'):
     w_post  = 0.1
@@ -120,7 +158,7 @@ elif(CONTROLLER=='tsid_adm'):
     w_post = 0.001                  # postural task weight
     Kp_com = 30                    # com proportional feedback gain
     Kd_com = 2*sqrt(Kp_com)         # com derivative feedback gain
-    Kp_adm = 400.0
+    Kp_adm = 1000.0                 # with kp_amd=1500 it starts being unstable
     Kd_adm = 2*sqrt(Kp_adm)
 
 #Noise applied on the state to get a simulated measurement
@@ -143,7 +181,6 @@ centroidalEstimator = MomentumEKF(dt, m, g_vec, c0.A1, dc0.A1, np.array([l0]), f
 
 log_size = int(simulation_time / dt)    #max simulation samples
 log_t        = np.zeros([log_size,1])+np.nan  # time
-log_index = 0  
 
 if CONTROLLER=='tsid_flex':
     tsid = TsidFlexibleContact(robot, Ky, Kz, w_post,          Kp_post, Kp_com, Kd_com, Ka_com, Kj_com, centroidalEstimator)
@@ -164,8 +201,8 @@ if CONTROLLER=='tsid_flex':
     tsid_var_names += [ 'lf_a_des', 'rf_a_des']
     tsid_var_types += [     vc,         vc    ]
     #Integral of angular momentum approximated by base orientation, angular momentum, its 1st and 2nd derivative, its desired 3rd derivative
-    tsid_var_names += ['iam', 'am', 'dam', 'ddam', 'dddam_des', 'robotInertia']
-    tsid_var_types += [  vr,   vr,    vr,     vr,       vr,          vr]
+    tsid_var_names += ['iam', 'dddam_des', 'robotInertia']
+    tsid_var_types += [  vr,        vr,          vr]
     tsid_var_names += ['com_a_err', 'com_j_err', 'com_a_mes', 'com_a_est', 'com_j_est', 'com_s_des']
     tsid_var_types += [     vc,          vc,          vc,          vc,          vc,            vc]
 else:
@@ -177,11 +214,11 @@ lgr.auto_log_variables(centroidalEstimator, ['x'], [vc], log_var_names=[['ekf_c_
                                                                          'ekf_f_2', 'ekf_f_3', 'ekf_df_0', 'ekf_df_1', 'ekf_df_2', 'ekf_df_3']])
 
 lgr.auto_log_local_variables(['com_p', 'com_v', 'com_a', 'com_j', 'ddf'], [vc, vc, vc, vc, vc])
+lgr.auto_log_local_variables(['am', 'dam', 'ddam'], [vr, vr, vr])
 lgr.auto_log_local_variables(['f'], [vc], log_var_names=[['lkf_sensor_0', 'lkf_sensor_1', 'rkf_sensor_0', 'rkf_sensor_1']])
 lgr.auto_log_local_variables(['df'], [vc], log_var_names=[['lkdf_sensor_0', 'lkdf_sensor_1', 'rkdf_sensor_0', 'rkdf_sensor_1']])
     
 def loop(q, v, f, df, niter, ndt=None, dt=None, tsleep=.9, fdisplay=100):
-    global log_index
     last_df  = np.matrix(np.zeros(4)).T
     t0 = time.time()
     if dt  is not None: simu.dt  = dt
@@ -189,7 +226,7 @@ def loop(q, v, f, df, niter, ndt=None, dt=None, tsleep=.9, fdisplay=100):
     robot.display(q)
     
     for i in range(niter):
-        log_index = i
+        t = i*simu.dt
         # add noise to the perfect state q,v,f,df
         if USE_REAL_STATE:
             q_noisy,v_noisy,f_noisy,df_noisy = q,v,f,df
@@ -197,16 +234,21 @@ def loop(q, v, f, df, niter, ndt=None, dt=None, tsleep=.9, fdisplay=100):
             q_noisy,v_noisy,f_noisy,df_noisy = ns.get_noisy_state(q,v,f,df)
         
         # simulate the system
-        u = controller(q_noisy, v_noisy, f_noisy, df_noisy)
+        u = controller(t, q_noisy, v_noisy, f_noisy, df_noisy)
         q,v,f,df = simu(q,v,u)
 
         # log data        
-        log_t[log_index] = log_index*simu.dt
+        log_t[i] = t
         com_p, com_v, com_a, com_j = robot.get_com_and_derivatives(q,v,f,df)
+        am = robot.get_angularMomentum(q, v)
+        am, dam, ddam = robot.get_angular_momentum_and_derivatives(q, v, f, df, Ky, Kz, recompute=False)
         ddf = (df-last_df)/simu.dt;
         last_df = df
         
         lgr.log_all(locals())
+        
+        if not i%100 :
+            print "t:%.1f \t com err %.3f\t ang-mom %.1f\t tau norm %.0f" % (t, norm(tsid.data.com_p_err), am, norm(tsid.data.tau))
 
         if not i % fdisplay:
             robot.display(q)
@@ -224,17 +266,18 @@ if PLOT_FORCES:
     fields, labels, linest = [], [], []
     fields += [['lkf_sensor_0', 'ekf_f_0',        'tsid_lkf_0']]
     labels += [['left force',   'ekf left force', 'left des force']]
-    linest += [['r', ':', '--']]
+    linest += [['b', '--', ':']]
     fields += [['rkf_sensor_0', 'ekf_f_2',         'tsid_rkf_0']]
     labels += [['right force',  'ekf right force', 'right des force']]
-    linest += [['b', ':', '--']]
+    linest += [['b', '--', ':']]
     fields += [['lkf_sensor_1', 'ekf_f_1',        'tsid_lkf_1',     ]]
     labels += [['left force',   'ekf left force', 'left des force'  ]]
-    linest += [['b', ':', '--']]
+    linest += [['r', '--', ':']]
     fields += [['rkf_sensor_1', 'ekf_f_3',         'tsid_rkf_1']]
     labels += [['right force',  'ekf right force', 'right des force']]
-    linest += [['r', ':', '--']]
+    linest += [['r', '--', ':']]
     plot_from_logger(lgr, dt, fields, labels, ['Force Y Left', 'Force Y Right', 'Force Z Left', 'Force Z Right'], linest, ncols=2)
+    plut.saveFigure('contact_forces_'+TEST_DESCR_STR)
 
 if PLOT_COM_DERIVATIVES :
     ax_lbl = {0:'Y', 1:'Z'}    
@@ -253,33 +296,24 @@ if PLOT_COM_DERIVATIVES :
         labels += [['com jerk '+ax_lbl[i], 'estimated com jerk '+ax_lbl[i]]]
         linest += [[None, '--']]
         plot_from_logger(lgr, dt, fields, labels, ['CoM', 'CoM Vel', 'CoM Acc', 'CoM Jerk'], linest, ncols=1)
+        plut.saveFigure('com_'+ax_lbl[i]+'_'+TEST_DESCR_STR)
         
 if PLOT_ANGULAR_MOMENTUM_DERIVATIVES:
-    f, ax = plt.subplots(5,1,sharex=True);
-    ax1 = plt.subplot(511)
-    plt.plot(log_t,lgr.tsid_iam, label="iam ") 
-    plt.legend()
-    plt.subplot(512,sharex=ax1)
-    plt.plot(log_t,lgr.tsid_am, label="am ") 
-    plt.plot(log_t,finite_diff(lgr.tsid_iam, dt),':', label="fd iam ") 
-    plt.legend()
-    plt.subplot(513,sharex=ax1)
-    plt.plot(log_t,lgr.tsid_dam, label="dam ") 
-    plt.plot(log_t,finite_diff(lgr_tsid_am, dt),':', label="fd am " ) 
-    plt.legend()
-    plt.subplot(514,sharex=ax1)
-    plt.plot(log_t,lgr.tsid_ddam, label="ddam ") 
-    plt.plot(log_t,finite_diff(lgr.tsid_dam,dt),':', label="fd dam ") 
-    plt.legend()
-    plt.subplot(515,sharex=ax1)
-    plt.plot(log_t,lgr.tsid_dddam_des, label="desired dddam")
-    plt.plot(log_t,finite_diff(lgr.tsid_ddam,dt),':', label="fd ddam")
-    plt.legend()
+    plot_from_logger(lgr, dt, [['am'], ['dam'], ['ddam']])
+    plut.saveFigure('angular_momentum_'+TEST_DESCR_STR)
 
 if(PLOT_JOINT_TORQUES):
-    plot_from_logger(lgr, dt, [['tsid_tau_'+str(i) for i in range(4)]])
+    plot_from_logger(lgr, dt, [['tsid_tau_'+str(i) for i in range(4)]], [['Joint torque '+str(i) for i in range(4)]])
+    plut.saveFigure('joint_torques_'+TEST_DESCR_STR)
     
-plt.show()
+if(SAVE_DATA):
+    lgr.dump_compressed(RESULTS_PATH+'logger_data')
+#tfile = open(plot_utils.FIGURE_PATH+conf.TEXT_FILE_NAME, "w")
+#tfile.write(info);
+#tfile.close();
+
+if(SHOW_FIGURES):
+    plt.show()
 
 try:
     embed()
