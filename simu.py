@@ -105,8 +105,9 @@ class Simu:
         Jl,Jr = robot.get_Jl_Jr_world(q)
         Jc = np.vstack([Jl[1:3],Jr[1:3]])    # (4, 7)
         dv = np.linalg.inv(M)*(tauq-h+Jc.T*self.f) #use last forces
+        v_mean = v + 0.5*dt*dv
         v += dv*dt
-        q   = se3.integrate(robot.model,q,v*dt)
+        q   = se3.integrate(robot.model,q,v_mean*dt)
         self.compute_f_df_from_q_v(q,v, False)
         self.dv = dv
         return q,v
@@ -157,13 +158,22 @@ class Simu:
         
     def simu(self,q,v,tau):
         '''Simu performs self.ndt steps each lasting self.dt/self.ndt seconds.'''
+        vlf_0, vrf_0 = self.vlf.copy(), self.vrf.copy()
+        com_p_0, com_v_0 = self.robot.get_com_and_derivatives(q, v)
+        
         for i in range(self.ndt):
             q,v = self.step(q,v,tau,self.dt/self.ndt)
-        robot = self.robot
-        NQ,NV,NB,RF,LF,RK,LK = self.NQ,self.NV,self.NB,self.RF,self.LF,self.RK,self.LK
+            
+        # compute average acc values during simulation time step
+        self.acc_lf = (self.vlf-vlf_0)/self.dt
+        self.acc_rf = (self.vrf-vrf_0)/self.dt
+        com_p, com_v = self.robot.get_com_and_derivatives(q, v)
+        self.com_a = (com_v - com_v_0)/self.dt
         
-        lkMlf = robot.data.oMi[LK].inverse()*robot.data.oMf[LF]
-        rkMrf = robot.data.oMi[RK].inverse()*robot.data.oMf[RF]
+#        robot = self.robot
+#        NQ,NV,NB,RF,LF,RK,LK = self.NQ,self.NV,self.NB,self.RF,self.LF,self.RK,self.LK
+#        lkMlf = robot.data.oMi[LK].inverse()*robot.data.oMf[LF]
+#        rkMrf = robot.data.oMi[RK].inverse()*robot.data.oMf[RF]
 
         f = self.f
         df = self.df
