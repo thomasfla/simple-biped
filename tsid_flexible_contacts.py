@@ -145,7 +145,7 @@ class TsidFlexibleContact:
             #take the measurement state as estimate, assume jerk is measured by df
             com_mes, com_v_mes, com_a_mes, com_j_mes = robot.get_com_and_derivatives(q, v, f_meas, df_meas)
             am_est = robot.get_angularMomentum(q, v)
-            com_est, com_v_est, com_a_est, com_j_est = com_mes, com_v_mes, com_a_mes, com_j_mes
+            com_est, com_v_est, com_a_est, com_j_est, f_est, df_est = com_mes, com_v_mes, com_a_mes, com_j_mes, f_meas, df_meas
         else:
             com_mes, com_v_mes, com_a_mes = robot.get_com_and_derivatives(q, v, f_meas)
             am = robot.get_angularMomentum(q, v)
@@ -154,6 +154,12 @@ class TsidFlexibleContact:
             
             (com_est, com_v_est, am_est, f_est, df_est) = self.estimator.get_state(True)
             dummy1, dummy2, com_a_est, com_j_est = robot.get_com_and_derivatives(q, v, f_est, df_est)
+            
+            # DEBUG
+#            com_mes, com_v_mes, com_a_mes, com_j_mes = robot.get_com_and_derivatives(q, v, f_meas, df_meas)
+#            am_est = robot.get_angularMomentum(q, v)
+#            com_est, com_v_est, com_a_est, com_j_est = com_mes, com_v_mes, com_a_mes, com_j_mes
+#            f_est, df_est = f_meas, df_meas
         
         
         # Formulate dynamic constrains  (ne sert a rien...)************* todo remove and make the problem smaller
