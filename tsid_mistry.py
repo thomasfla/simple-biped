@@ -193,8 +193,8 @@ class TsidMistry:
         A_pc, b_g  = self._compute_Apc(q, com_est)
         dA_pc = self._compute_dApc(q, v, com_est, com_v_est)
         A_dt  = A_pc + self.dt*dA_pc
-        dp    = self.Kinv * df_est
-        N     = A_dt*(f_est - self.dt*K*dp) + b_g - ddx_des
+        dp    = Jc*v # self.Kinv * df_est
+        N     = A_dt*(f_est + self.dt*K*dp) + b_g - ddx_des
         X     = -self.dt*A_dt*B
 
         b_momentum = N - X*dJcdq
