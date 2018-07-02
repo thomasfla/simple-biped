@@ -11,19 +11,19 @@ from scipy import linalg as la
 import numpy as np
 import matplotlib.pyplot as plt
 from numpy.random import normal
-from LQG_utils import lqr, dlqr, dkalman
+#from utils.LQG_utils import lqr, dlqr, dkalman
 from ExtendedKalmanFilter import ExtendedKalmanFilter
 import matplotlib as mpl
 mpl.rcParams['figure.figsize']      = 18, 8
 
 def measurement(x):
-    #return np.sin(x)
-    return np.array(x.dot(x)*(x));
+    return np.sin(x)
+#    return np.array(x.dot(x)*(x));
 
 def measurement_Jac(x):
-    #return np.cos(x)
+    return np.cos(x)
     #return 2*np.array([[x[0]]]);
-    return 3*np.array([[x[0]**2]]);
+#    return 3*np.array([[x[0]**2]]);
     
 ''' USER PARAMETERS '''
 dt = 1e-2
@@ -40,7 +40,7 @@ sigma_x_0 = 1e-1      # initial state estimate std dev
 ''' SYSTEM DYNAMICS '''
 A = np.array([[1.0]])
 B = np.array([[dt]])
-x_0 = np.array([1.7])
+x_0 = np.array([0.0])
 
 n_x = A.shape[0]
 n_u = B.shape[1]
@@ -56,7 +56,7 @@ Q = w_x * np.identity(n_x)
 R = w_u * np.identity(n_u)
 
 ''' COMPUTE OPTIMAL LQR GAIN '''
-(K_LQG,X,eigValsCtrl) = dlqr(A, B, Q, R)
+#(K_LQG,X,eigValsCtrl) = dlqr(A, B, Q, R)
 
 ''' CREATE EKF '''
 ekf = ExtendedKalmanFilter(dim_x=n_x, dim_z=n_y, dim_u=n_u)
@@ -79,7 +79,7 @@ x[0,:]     = x_0
 x_hat[0,:] = x_0 + w[0,:]
 y[0,:]     = measurement(x[0,:]) + v[0,:]
 for t in range(T-1):
-    u[t,:]       = -np.dot(K_LQG, x_hat[t,:])
+    u[t,:]       = 0.4*np.sin(1e-2*t) #-np.dot(K_LQG, x_hat[t,:])
     x[t+1,:]     = A.dot(x[t,:])   + B.dot(u[t,:]) + w[t,:]
     y[t+1,:]     = measurement(x[t+1,:]) + v[t+1,:]
     ekf.predict_update(y[t+1,:], measurement_Jac, measurement, u=u[t,:])
@@ -87,9 +87,9 @@ for t in range(T-1):
 
 ''' PLOT RESULTS '''
 f, ax = plt.subplots(1,1,sharex=True);
-ax.plot(x,         '-',  label='x')
-ax.plot(y,         '-',  label='y')
-ax.plot(x_hat,     '--',  label='x EKF')
+ax.plot(x,         '-',  label='x', linewidth=3)
+ax.plot(y,         '-',  label='y', linewidth=3)
+ax.plot(x_hat,     '--',  label='x EKF', linewidth=2)
 ax.grid();
 ax.legend();
 plt.title('State')
