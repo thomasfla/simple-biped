@@ -49,21 +49,30 @@ def com_traj(t, c_init, c_final, T):
     return (np.matrix([[py ],[pz]]), np.matrix([[vy ],[vz]]), 
             np.matrix([[ay ],[az]]), np.matrix([[jy ],[jz]]), np.matrix([[sy ],[sz]]))
     
-CONTROLLER = 'tsid_mistry'             # either 'tsid' or 'tsid_flex' or 'tsid_adm' or 'tsid_mistry'
-F_DISTURB = np.matrix([4e2, 0, 0]).T
-COM_SIN_AMP = np.array([0.0, 0.0])
+CONTROLLER = 'tsid_flex'             # either 'tsid_rigid' or 'tsid_flex' or 'tsid_adm' or 'tsid_mistry'
+F_DISTURB = np.matrix([0e2, 0, 0]).T
+COM_SIN_AMP = np.array([0.03, 0.0])
+ZETA = .3   # with zeta=0.03 and ndt=100 it is unstable
 
 PLOT_FORCES                         = 1
 PLOT_COM_ESTIMATION                 = 0
 PLOT_COM_TRACKING                   = 1
-PLOT_CONTACT_POINT_ACC              = 0
+PLOT_CONTACT_POINT_ACC              = 1
 PLOT_ANGULAR_MOMENTUM_DERIVATIVES   = 0
 PLOT_JOINT_TORQUES                  = 1
-plut.SAVE_FIGURES                   = 0
-SAVE_DATA                           = 0
-SHOW_FIGURES                        = 1
+plut.SAVE_FIGURES                   = 1
+SAVE_DATA                           = 1
+SHOW_FIGURES                        = 0
 
-INPUT_PARAMS = ['controller=', 'com_sin_amp=', 'f_dist=']
+#Simulation parameters
+dt  = 1e-3
+ndt = 10
+simulation_time = 2.0
+USE_ESTIMATOR = 0              # use real state for controller feedback
+T_DISTURB_BEGIN = 0.20          # Time at which the disturbance starts
+T_DISTURB_END   = 0.21          # Time at which the disturbance ends
+
+INPUT_PARAMS = ['controller=', 'com_sin_amp=', 'f_dist=', 'zeta=', 'use_estimator=']
 try:
     opts, args = getopt.getopt(sys.argv[1:],"",INPUT_PARAMS)
 except getopt.GetoptError:
@@ -80,14 +89,19 @@ for opt, arg in opts:
         COM_SIN_AMP[0] = float(arg);
     elif opt == "--f_dist":
         F_DISTURB[0,0] = float(arg);
+    elif opt == "--zeta":
+        ZETA = float(arg);
+    elif opt == "--use_estimator":
+        USE_ESTIMATOR = bool(arg);
 
 print "*** CURRENT CONFIGURATION ***"
 print "- controller = ", CONTROLLER
 print "- com_sin_amp =", COM_SIN_AMP[0]
 print "- f_dist =     ", F_DISTURB[0,0]
+print "- zeta =       ", ZETA
 print "\n"
      
-TEST_DESCR_STR = CONTROLLER
+TEST_DESCR_STR = CONTROLLER + '_zeta_'+str(ZETA)
 if(COM_SIN_AMP[0]!=0.0):
     TEST_DESCR_STR += '_comSinAmp_'+str(COM_SIN_AMP[0])
 if(F_DISTURB[0,0]!=0.0):
@@ -106,21 +120,14 @@ if useViewer:
     robot.viewer.setCameraTransform(0,[1.9154722690582275, -0.2266872227191925, 0.1087859719991684,
                                        0.5243823528289795, 0.518651008605957, 0.4620114266872406, 0.4925136864185333])
 
-#Simulation parameters
-dt  = 1e-3
-ndt = 10
-simulation_time = 0.7
-USE_REAL_STATE = 1       # use real state for controller feedback
-T_DISTURB_BEGIN = 0.20          # Time at which the disturbance starts
-T_DISTURB_END   = 0.21          # Time at which the disturbance ends
+
 
 #robot parameters
 tauc = 0.*np.array([1.,1.,1.,1.])#coulomb friction
 Ky = 23770.
 Kz = 239018.
-zeta = .3   # with zeta=0.03 and ndt=100 it is unstable
-By = zeta*2*sqrt(Ky) #50e0
-Bz = zeta*2*sqrt(Kz) #500e0
+By = ZETA*2*sqrt(Ky) #50e0
+Bz = ZETA*2*sqrt(Kz) #500e0
 Kspring = -np.diagflat([Ky,Kz,0.])     # Stiffness of the feet spring
 Bspring = -np.diagflat([By,Bz,0.])     # damping of the feet spring
 
@@ -151,12 +158,8 @@ ns = NoisyState(dt,robot,Ky,Kz)
 # noise standard deviation
 n_x, n_u, n_y = 9+4, 4, 9
 sigma_x_0 = 1e-2                    # initial state estimate std dev
-if(CONTROLLER=='tsid_mistry'):
-    sigma_ddf   = 1e4*np.ones(4)          # control (i.e. force accelerations) noise std dev used in EKF
-    sigma_f     = np.array([ns.std_fy, ns.std_fz, ns.std_fy, ns.std_fz])  # force measurement noise std dev
-else:
-    sigma_ddf   = 1e4*np.ones(4)          # control (i.e. force accelerations) noise std dev used in EKF
-    sigma_f     = np.array([ns.std_fy, ns.std_fz, ns.std_fy, ns.std_fz])  # force measurement noise std dev
+sigma_ddf   = 1e4*np.ones(4)          # control (i.e. force accelerations) noise std dev used in EKF
+sigma_f     = np.array([ns.std_fy, ns.std_fz, ns.std_fy, ns.std_fz])  # force measurement noise std dev
 sigma_f_dist = 1e1*np.ones(2)          # external force noise std dev used in EKF
 sigma_c  = 1e-3*np.ones(2)             # CoM position measurement noise std dev
 sigma_dc = ns.std_gyry*np.ones(2)      # CoM velocity measurement noise std dev
@@ -174,7 +177,7 @@ if(CONTROLLER=='tsid_flex'):
     w_post  = 0.3
     (Kp_com, Kd_com, Ka_com, Kj_com) = (1.20e+06, 1.54e+05, 7.10e+03, 1.40e+02)
     tsid = TsidFlexibleContact(robot, Ky, Kz, w_post, Kp_post, Kp_com, Kd_com, Ka_com, Kj_com, centroidalEstimator)
-elif(CONTROLLER=='tsid'):
+elif(CONTROLLER=='tsid_rigid'):
     w_post  = 1e-2                  # postural task weight
     w_force = 1e-4
     tsid = Tsid(robot, Ky, Kz, w_post, w_force, Kp_post, Kp_com, centroidalEstimator)
@@ -186,7 +189,7 @@ elif(CONTROLLER=='tsid_mistry'):
     w_post  = 1e-3                  # postural task weight
     tsid = TsidMistry(robot, Ky, Kz, By, Bz, w_post, Kp_post, Kp_com, Kd_com, dt, centroidalEstimator)
 
-if(USE_REAL_STATE):
+if(not USE_ESTIMATOR):
     tsid.estimator = None
     
 log_size = int(simulation_time / dt)    #max simulation samples
@@ -221,12 +224,11 @@ lgr.auto_log_variables(simu, ['dv', 'com_p', 'com_v', 'com_a', 'com_j', 'vlf', '
 lgr.auto_log_variables(simu, ['am', 'dam', 'ddam'], 3*[vr,], 'simu')
 lgr.auto_log_variables(simu, ['f'], [vc], log_var_names=[['simu_'+s for s in ['lkf_0', 'lkf_1', 'rkf_0', 'rkf_1']]])
 
-if(not USE_REAL_STATE):
+if(USE_ESTIMATOR):
     lgr.auto_log_variables(centroidalEstimator, ['x'], [vc], log_var_names=[['ekf_c_0', 'ekf_c_1', 'ekf_dc_0', 'ekf_dc_1', 'ekf_l', 'ekf_f_0', 'ekf_f_1',
                                                                              'ekf_f_2', 'ekf_f_3', 'ekf_df_0', 'ekf_df_1', 'ekf_df_2', 'ekf_df_3']])
     
 def loop(q, v, f, df, niter, ndt=None, dt=None, tsleep=.9, fdisplay=100):
-#    last_df  = np.matrix(np.zeros(4)).T
     t0 = time.time()
     if dt  is not None: simu.dt  = dt
     if ndt is not None: simu.ndt = ndt
@@ -236,10 +238,10 @@ def loop(q, v, f, df, niter, ndt=None, dt=None, tsleep=.9, fdisplay=100):
         t = i*simu.dt
         
         # add noise to the perfect state q,v,f,df
-        if USE_REAL_STATE:
-            q_noisy,v_noisy,f_noisy,df_noisy = q,v,f,df
-        else:
+        if USE_ESTIMATOR:
             q_noisy,v_noisy,f_noisy,df_noisy = ns.get_noisy_state(q,v,f,df)
+        else:
+            q_noisy,v_noisy,f_noisy,df_noisy = q,v,f,df            
         
         # simulate the system
         u = controller(t, q_noisy, v_noisy, f_noisy, df_noisy)
@@ -284,13 +286,9 @@ if PLOT_FORCES:
 if PLOT_CONTACT_POINT_ACC:
     ax_lbl = {0:'Y', 1:'Z'}    
     for i in [0,1]:
-        fields, labels, linest = [], [], []
-        fields += [['tsid_lf_a_des_'+str(i),         'simu_acc_lf_'+str(i)       ]]
-        labels += [['des left foot acc '+ax_lbl[i],  'left foot acc '+ax_lbl[i]  ]]
-        linest += [[None,                            '--'                        ]]
-        fields += [['tsid_rf_a_des_'+str(i),         'simu_acc_rf_'+str(i)       ]]
-        labels += [['des right foot acc '+ax_lbl[i], 'right foot acc '+ax_lbl[i] ]]
-        linest += [[None,                            '--'                        ]]
+        fields = [['tsid_lf_a_des_'+str(i),         'simu_acc_lf_'+str(i)       ]] + [['tsid_rf_a_des_'+str(i),         'simu_acc_rf_'+str(i)       ]]
+        labels = [['des left foot acc '+ax_lbl[i],  'left foot acc '+ax_lbl[i]  ]] + [['des right foot acc '+ax_lbl[i], 'right foot acc '+ax_lbl[i] ]]
+        linest = [[None,                            '--'                        ]] + [[None,                            '--'                        ]]
         plot_from_logger(lgr, dt, fields, labels, ['Contact Point Accelerations', 'Contact Point Accelerations'], linest, ncols=1)
         plut.saveFigure('contact_point_acc_'+ax_lbl[i]+'_'+TEST_DESCR_STR)
         
@@ -323,8 +321,8 @@ if PLOT_COM_ESTIMATION :
         plot_from_logger(lgr, dt, fields, labels, ['CoM', 'CoM Vel', 'CoM Acc', 'CoM Jerk'], linest, ncols=1)
         plut.saveFigure('com_estimate_'+ax_lbl[i]+'_'+TEST_DESCR_STR)
 
-#plot_from_logger(lgr, dt, [['tsid_dv_'+str(i), 'simu_dv_'+str(i)] for i in range(4)])
-
+#plot_from_logger(lgr, dt, [['tsid_dv_'+str(i), 'simu_dv_'+str(i)] for i in range(4)])  
+    
 if CONTROLLER=='tsid_mistry':
     plot_from_logger(lgr, dt, [['tsid_com_j_des_'+str(i), 'tsid_com_j_exp_'+str(i), 'simu_com_j_'+str(i)] for i in range(1)], linestyles=[[None,'--',':']]*2)    
     plot_from_logger(lgr, dt, [['tsid_df_des_'+str(i), 'simu_df_'+str(i)] for i in range(4)], linestyles=[[None,'--']]*4, ncols=2)
