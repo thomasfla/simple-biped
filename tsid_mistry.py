@@ -196,6 +196,13 @@ class TsidMistry:
         dp    = Jc*v # self.Kinv * df_est
         N     = A_dt*(f_est + self.dt*K*dp) + b_g - ddx_des
         X     = -self.dt*A_dt*B
+        
+#        ddx      = A_pc*f + b_g
+#        d3x      = A_pc*df + dA_pc*f
+#        d3x      = A_pc*K*dp + A_pc*B*ddp + dA_pc*f
+#        ddx_next = ddx + dt*d3x = 
+#                 = A_pc*f + b_g + dt*(A_pc*K*dp + A_pc*B*ddp + dA_pc*f)
+#                 = (A_pc+dt*dA_pc)*f + b_g + dt*(A_pc*K*dp + A_pc*B*ddp)
 
         b_momentum = N - X*dJcdq
         A_momentum = np.hstack([X*Jc, matlib.zeros([X.shape[0],4+4])]) # zeros for columns corresponding to forces and torques
@@ -232,7 +239,7 @@ class TsidMistry:
         tau = np.matrix(y_QP[7+4:] ).T
                 
         feet_a_des = Jc*dv + dJcdq
-        self.df_des = K*Jc*v + B * feet_a_des
+        self.data.df_des = K*Jc*v + B * feet_a_des
         
         # store data
         self.data.lf_a_des = feet_a_des[:2]
@@ -246,6 +253,8 @@ class TsidMistry:
         self.data.com_v_est  = com_v_est.A1
         self.data.com_a_est  = com_a_est.A1
         self.data.com_a_des  = com_a_des.A1
+        self.data.com_j_des  = (com_a_des.A1 - com_a_est.A1)/self.dt
+        self.data.com_j_exp  = (A_pc*self.data.df_des + dA_pc*f_est).A1[:2] / m
         
         self.data.lkf    = f[:2].A1
         self.data.rkf    = f[2:].A1
