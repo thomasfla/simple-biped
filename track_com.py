@@ -50,13 +50,13 @@ def com_traj(t, c_init, c_final, T):
             np.matrix([[ay ],[az]]), np.matrix([[jy ],[jz]]), np.matrix([[sy ],[sz]]))
     
 CONTROLLER = 'tsid_mistry'             # either 'tsid' or 'tsid_flex' or 'tsid_adm' or 'tsid_mistry'
-F_DISTURB = np.matrix([0e2, 0, 0]).T
-COM_SIN_AMP = np.array([0.03, 0.0])
+F_DISTURB = np.matrix([4e2, 0, 0]).T
+COM_SIN_AMP = np.array([0.0, 0.0])
 
 PLOT_FORCES                         = 1
 PLOT_COM_ESTIMATION                 = 0
 PLOT_COM_TRACKING                   = 1
-PLOT_CONTACT_POINT_ACC              = 1
+PLOT_CONTACT_POINT_ACC              = 0
 PLOT_ANGULAR_MOMENTUM_DERIVATIVES   = 0
 PLOT_JOINT_TORQUES                  = 1
 plut.SAVE_FIGURES                   = 0
@@ -108,8 +108,8 @@ if useViewer:
 
 #Simulation parameters
 dt  = 1e-3
-ndt = 100
-simulation_time = 0.1
+ndt = 10
+simulation_time = 0.7
 USE_REAL_STATE = 1       # use real state for controller feedback
 T_DISTURB_BEGIN = 0.20          # Time at which the disturbance starts
 T_DISTURB_END   = 0.21          # Time at which the disturbance ends
@@ -118,9 +118,9 @@ T_DISTURB_END   = 0.21          # Time at which the disturbance ends
 tauc = 0.*np.array([1.,1.,1.,1.])#coulomb friction
 Ky = 23770.
 Kz = 239018.
-psi = .33   # with psi=0.03 and ndt=100 it is unstable
-By = psi*2*sqrt(Ky) #50e0
-Bz = psi*2*sqrt(Kz) #500e0
+zeta = .3   # with zeta=0.03 and ndt=100 it is unstable
+By = zeta*2*sqrt(Ky) #50e0
+Bz = zeta*2*sqrt(Kz) #500e0
 Kspring = -np.diagflat([Ky,Kz,0.])     # Stiffness of the feet spring
 Bspring = -np.diagflat([By,Bz,0.])     # damping of the feet spring
 
@@ -183,7 +183,7 @@ elif(CONTROLLER=='tsid_adm'):
     Kd_adm = 2*sqrt(Kp_adm)
     tsid = TsidAdmittance(robot, Ky, Kz, w_post, Kp_post, Kp_com, Kp_adm, Kd_adm, centroidalEstimator)
 elif(CONTROLLER=='tsid_mistry'):
-    w_post  = 1e-2                  # postural task weight
+    w_post  = 1e-3                  # postural task weight
     tsid = TsidMistry(robot, Ky, Kz, By, Bz, w_post, Kp_post, Kp_com, Kd_com, dt, centroidalEstimator)
 
 if(USE_REAL_STATE):
@@ -195,11 +195,13 @@ tsid.callback_com = lambda t : com_traj(t, COM_REF_START, COM_REF_END, COM_TRAJ_
 
 # SETUP LOGGER
 lgr = RaiLogger()
-vc = 'vector'
-vr = 'variable'
-tsid_var_names  = ['dv', 'tau', 'com_p_err', 'com_v_err', 'com_p_mes', 'com_v_mes', 'com_p_est', 'com_v_est', 'comref', 'lkf', 'rkf']
-tsid_var_types  = [ vc,     vc,     vc,          vc,          vc,            vc,           vc,         vc,       vc,      vc,    vc]
+vc, vr = 'vector', 'variable'
+tsid_var_names  = ['dv', 'tau', 'com_p_mes', 'com_v_mes', 'com_p_est', 'com_v_est', 'comref', 'lkf', 'rkf']
+tsid_var_types  = 9*[vc,]
 
+if CONTROLLER=='tsid_mistry':
+    tsid_var_names += ['com_j_des', 'com_j_exp', 'df_des']
+    tsid_var_types += [     vc    ,   vc       ,    vc]
 if CONTROLLER=='tsid_flex' or CONTROLLER=='tsid_mistry':
     tsid_var_names += [ 'lf_a_des', 'rf_a_des']
     tsid_var_types += [     vc,         vc    ]
@@ -208,24 +210,23 @@ if CONTROLLER=='tsid_flex':
     #Integral of angular momentum approximated by base orientation, angular momentum, its 1st and 2nd derivative, its desired 3rd derivative
     tsid_var_names += ['iam', 'dddam_des', 'robotInertia']
     tsid_var_types += [  vr,        vr,          vr]
-    tsid_var_names += ['com_a_err', 'com_j_err', 'com_a_mes', 'com_a_est', 'com_j_est', 'com_s_des']
-    tsid_var_types += [     vc,          vc,          vc,          vc,          vc,            vc]
+    tsid_var_names += ['com_a_mes', 'com_a_est', 'com_j_est', 'com_s_des']
+    tsid_var_types += [       vc,          vc,          vc,            vc]
 else:
     tsid_var_names += ['com_a_des']
     tsid_var_types += [     vc]
 lgr.auto_log_variables(tsid.data, tsid_var_names, tsid_var_types, 'tsid')
-lgr.auto_log_variables(simu, ['vlf', 'vrf', 'dv', 'acc_lf', 'acc_rf', 'com_a'], [vc, vc, vc, vc, vc, vc], 'simu')
+
+lgr.auto_log_variables(simu, ['dv', 'com_p', 'com_v', 'com_a', 'com_j', 'vlf', 'vrf', 'acc_lf', 'acc_rf', 'df'], 10*[vc,], 'simu')
+lgr.auto_log_variables(simu, ['am', 'dam', 'ddam'], 3*[vr,], 'simu')
+lgr.auto_log_variables(simu, ['f'], [vc], log_var_names=[['simu_'+s for s in ['lkf_0', 'lkf_1', 'rkf_0', 'rkf_1']]])
+
 if(not USE_REAL_STATE):
     lgr.auto_log_variables(centroidalEstimator, ['x'], [vc], log_var_names=[['ekf_c_0', 'ekf_c_1', 'ekf_dc_0', 'ekf_dc_1', 'ekf_l', 'ekf_f_0', 'ekf_f_1',
                                                                              'ekf_f_2', 'ekf_f_3', 'ekf_df_0', 'ekf_df_1', 'ekf_df_2', 'ekf_df_3']])
-
-lgr.auto_log_local_variables(['com_p', 'com_v', 'com_a', 'com_j', 'ddf'], [vc, vc, vc, vc, vc])
-lgr.auto_log_local_variables(['am', 'dam', 'ddam'], [vr, vr, vr])
-lgr.auto_log_local_variables(['f'], [vc], log_var_names=[['lkf_sensor_0', 'lkf_sensor_1', 'rkf_sensor_0', 'rkf_sensor_1']])
-lgr.auto_log_local_variables(['df'], [vc], log_var_names=[['lkdf_sensor_0', 'lkdf_sensor_1', 'rkdf_sensor_0', 'rkdf_sensor_1']])
     
 def loop(q, v, f, df, niter, ndt=None, dt=None, tsleep=.9, fdisplay=100):
-    last_df  = np.matrix(np.zeros(4)).T
+#    last_df  = np.matrix(np.zeros(4)).T
     t0 = time.time()
     if dt  is not None: simu.dt  = dt
     if ndt is not None: simu.ndt = ndt
@@ -245,15 +246,11 @@ def loop(q, v, f, df, niter, ndt=None, dt=None, tsleep=.9, fdisplay=100):
         q,v,f,df = simu(q,v,u)
         
         # log data        
-        log_t[i] = t
-        com_p, com_v, com_a, com_j = robot.get_com_and_derivatives(q,v,f,df)
-        am, dam, ddam = robot.get_angular_momentum_and_derivatives(q, v, f, df, Ky, Kz, recompute=False)
-        ddf = (df-last_df)/simu.dt;
-        last_df = df        
+        log_t[i] = t  
         lgr.log_all(locals())
         
         if not i%100 :
-            print "t:%.1f \t com err %.3f\t ang-mom %.1f\t tau norm %.0f" % (t, norm(tsid.data.com_p_err), am, norm(tsid.data.tau))
+            print "t:%.1f \t com err %.3f\t ang-mom %.1f\t tau norm %.0f" % (t, norm(tsid.data.com_p_err), simu.am, norm(tsid.data.tau))
 
         if not i % fdisplay:
             robot.display(q)
@@ -269,16 +266,16 @@ q,v = loop(q,v,f,df,log_size)
 
 if PLOT_FORCES:
     fields, labels, linest = [], [], []
-    fields += [['lkf_sensor_0', 'ekf_f_0',        'tsid_lkf_0']]
+    fields += [['simu_lkf_0',   'ekf_f_0',        'tsid_lkf_0']]
     labels += [['left force',   'ekf left force', 'left des force']]
     linest += [['b', '--', ':']]
-    fields += [['rkf_sensor_0', 'ekf_f_2',         'tsid_rkf_0']]
+    fields += [['simu_rkf_0',   'ekf_f_2',         'tsid_rkf_0']]
     labels += [['right force',  'ekf right force', 'right des force']]
     linest += [['b', '--', ':']]
-    fields += [['lkf_sensor_1', 'ekf_f_1',        'tsid_lkf_1',     ]]
+    fields += [['simu_lkf_1',   'ekf_f_1',        'tsid_lkf_1',     ]]
     labels += [['left force',   'ekf left force', 'left des force'  ]]
     linest += [['r', '--', ':']]
-    fields += [['rkf_sensor_1', 'ekf_f_3',         'tsid_rkf_1']]
+    fields += [['simu_rkf_1',   'ekf_f_3',         'tsid_rkf_1']]
     labels += [['right force',  'ekf right force', 'right des force']]
     linest += [['r', '--', ':']]
     plot_from_logger(lgr, dt, fields, labels, ['Force Y Left', 'Force Y Right', 'Force Z Left', 'Force Z Right'], linest, ncols=2)
@@ -301,12 +298,12 @@ if PLOT_COM_TRACKING :
     ax_lbl = {0:'Y', 1:'Z'}    
     for i in [0,1]:
         fields, labels, linest = [], [], []
-        fields += [['com_p_'+str(i),  'tsid_comref_'+str(i) ]]
+        fields += [['simu_com_p_'+str(i),  'tsid_comref_'+str(i) ]]
         labels += [['com '+ax_lbl[i], 'ref com '+ax_lbl[i]  ]]
         linest += [[None,             '--']]
-        fields += [['com_v_'+str(i)      ]] + [['simu_com_a_'+str(i),     'com_a_'+str(i),      'tsid_com_a_des_'+str(i)]] + [['com_j_'+str(i),       ]]
-        labels += [['com vel '+ax_lbl[i] ]] + [['avg com acc '+ax_lbl[i], 'com acc '+ax_lbl[i], 'com acc des '+ax_lbl[i]]] + [['com jerk '+ax_lbl[i]  ]]
-        linest += [[None]]                  + [[None,                     '--',                 ':'                     ]] + [[None]]
+        fields += [['simu_com_v_'+str(i)      ]] + [['simu_com_a_'+str(i), 'tsid_com_a_des_'+str(i)]] + [['simu_com_j_'+str(i)  ]]
+        labels += [['com vel '+ax_lbl[i]      ]] + [['com acc '+ax_lbl[i], 'com acc des '+ax_lbl[i]]] + [['com jerk '+ax_lbl[i] ]]
+        linest += [[None                      ]] + [[None,                 '--'                    ]] + [[None                  ]]
         plot_from_logger(lgr, dt, fields, labels, ['CoM', 'CoM Vel', 'CoM Acc', 'CoM Jerk'], linest, ncols=1)
         plut.saveFigure('com_tracking_'+ax_lbl[i]+'_'+TEST_DESCR_STR)
 
@@ -314,20 +311,26 @@ if PLOT_COM_ESTIMATION :
     ax_lbl = {0:'Y', 1:'Z'}    
     for i in [0,1]:
         fields, labels, linest = [], [], []
-        fields += [['com_p_'+str(i),       'tsid_com_p_est_'+str(i)   ]] + [['com_v_'+str(i),       'tsid_com_v_est_'+str(i)]]
+        fields += [['simu_com_p_'+str(i),  'tsid_com_p_est_'+str(i)   ]] + [['simu_com_v_'+str(i),  'tsid_com_v_est_'+str(i)      ]]
         labels += [['com '+ax_lbl[i],      'estimated com '+ax_lbl[i] ]] + [['com vel '+ax_lbl[i],  'estimated com vel '+ax_lbl[i]]]
         linest += [[None, '--']] + [[None, '--']]
-        fields += [['com_a_'+str(i),       'tsid_com_a_est_'+str(i)]]
+        fields += [['simu_com_a_'+str(i),  'tsid_com_a_est_'+str(i)      ]]
         labels += [['com acc '+ax_lbl[i],  'estimated com acc '+ax_lbl[i]]]
         linest += [[None, '--']]
-        fields += [['com_j_'+str(i),       'tsid_com_j_est_'+str(i)]]
+        fields += [['simu_com_j_'+str(i),  'tsid_com_j_est_'+str(i)       ]]
         labels += [['com jerk '+ax_lbl[i], 'estimated com jerk '+ax_lbl[i]]]
         linest += [[None, '--']]
         plot_from_logger(lgr, dt, fields, labels, ['CoM', 'CoM Vel', 'CoM Acc', 'CoM Jerk'], linest, ncols=1)
         plut.saveFigure('com_estimate_'+ax_lbl[i]+'_'+TEST_DESCR_STR)
 
+#plot_from_logger(lgr, dt, [['tsid_dv_'+str(i), 'simu_dv_'+str(i)] for i in range(4)])
+
+if CONTROLLER=='tsid_mistry':
+    plot_from_logger(lgr, dt, [['tsid_com_j_des_'+str(i), 'tsid_com_j_exp_'+str(i), 'simu_com_j_'+str(i)] for i in range(1)], linestyles=[[None,'--',':']]*2)    
+    plot_from_logger(lgr, dt, [['tsid_df_des_'+str(i), 'simu_df_'+str(i)] for i in range(4)], linestyles=[[None,'--']]*4, ncols=2)
+
 if PLOT_ANGULAR_MOMENTUM_DERIVATIVES:
-    plot_from_logger(lgr, dt, [['am'], ['dam'], ['ddam']])
+    plot_from_logger(lgr, dt, [['simu_am'], ['simu_dam'], ['simu_ddam']])
     plut.saveFigure('angular_momentum_'+TEST_DESCR_STR)
 
 if(PLOT_JOINT_TORQUES):
