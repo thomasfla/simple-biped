@@ -100,10 +100,10 @@ def plot_from_logger(logger, dt, streams, labels=None, titles=None, linestyles=N
         
     i = 0
     for (sp_streams, sp_labels, sp_linestyles) in zip(streams, labels, linestyles):
-        N = len(logger.get_streams(sp_streams[0]))
-        time = np.arange(0.0, dt*N, dt)
         for (stream, label, ls) in zip(sp_streams, sp_labels, sp_linestyles):
             try:
+                N = len(logger.get_streams(stream))
+                time = np.arange(0.0, dt*N, dt)
                 if( ls is None):
                     ax[i].plot(time, logger.get_streams(stream), label=label)
                 else:
