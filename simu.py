@@ -159,25 +159,22 @@ class Simu:
     def simu(self,q,v,tau):
         '''Simu performs self.ndt steps each lasting self.dt/self.ndt seconds.'''
         vlf_0, vrf_0 = self.vlf.copy(), self.vrf.copy()
-        com_p_0, com_v_0 = self.robot.get_com_and_derivatives(q, v)
+        com_p_0, com_v_0, com_a_0 = self.robot.get_com_and_derivatives(q, v, self.f)
+        f_0 = self.f.copy()
         
         for i in range(self.ndt):
             q,v = self.step(q,v,tau,self.dt/self.ndt)
             
         # compute average acc values during simulation time step
-        self.acc_lf = (self.vlf-vlf_0)/self.dt
-        self.acc_rf = (self.vrf-vrf_0)/self.dt
-        com_p, com_v = self.robot.get_com_and_derivatives(q, v)
-        self.com_a = (com_v - com_v_0)/self.dt
+        self.acc_lf = (self.vlf - vlf_0)/self.dt
+        self.acc_rf = (self.vrf - vrf_0)/self.dt
+        self.df     = (self.f - f_0)/self.dt
+        self.com_p, self.com_v, com_a = self.robot.get_com_and_derivatives(q, v, self.f)
+        self.com_a = (self.com_v - com_v_0)/self.dt
+        self.com_j = (com_a - com_a_0)/self.dt
+        self.am, self.dam, self.ddam = self.robot.get_angular_momentum_and_derivatives(q, v, self.f, self.df, self.Krf[0,0], self.Krf[1,1])
         
-#        robot = self.robot
-#        NQ,NV,NB,RF,LF,RK,LK = self.NQ,self.NV,self.NB,self.RF,self.LF,self.RK,self.LK
-#        lkMlf = robot.data.oMi[LK].inverse()*robot.data.oMf[LF]
-#        rkMrf = robot.data.oMi[RK].inverse()*robot.data.oMf[RF]
-
-        f = self.f
-        df = self.df
-        return q,v,f,df
+        return q,v,self.f,self.df
 
     __call__ = simu
 
