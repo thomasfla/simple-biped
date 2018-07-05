@@ -84,7 +84,7 @@ def setAxisFontSize(ax, size):
         label.set_fontsize(size)
         label.set_bbox(dict(facecolor='white', edgecolor='None', alpha=0.65))
 
-def plot_from_logger(logger, dt, streams, labels=None, titles=None, linestyles=None, ncols=1):
+def plot_from_logger(logger, dt, streams, labels=None, titles=None, linestyles=None, ncols=1, xlabel='Time [s]', ylabel=None):
     nsubplots = len(streams)
     nrows = int(nsubplots/ncols)
     f, ax = plt.subplots(nrows, ncols, sharex=True);
@@ -111,9 +111,21 @@ def plot_from_logger(logger, dt, streams, labels=None, titles=None, linestyles=N
             except KeyError:
                 print "[plot_from_logger] Could not find field %s"%(stream)
         ax[i].legend()
+
         if titles is not None:
-            ax[i].set_title(titles[i])
+            if isinstance(titles, basestring):
+                ax[0].set_title(titles)
+            else:
+                ax[i].set_title(titles[i])
+                
+        if ylabel is not None:
+            if isinstance(ylabel, basestring):
+                ax[i].set_ylabel(ylabel)
+            else:
+                ax[i].set_ylabel(ylabel[i])
         i += 1
+    if xlabel is not None:
+        ax[-1].set_xlabel(xlabel)
     return ax
     
 def grayify_cmap(cmap):

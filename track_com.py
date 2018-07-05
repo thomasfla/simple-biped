@@ -49,9 +49,9 @@ def com_traj(t, c_init, c_final, T):
     return (np.matrix([[py ],[pz]]), np.matrix([[vy ],[vz]]), 
             np.matrix([[ay ],[az]]), np.matrix([[jy ],[jz]]), np.matrix([[sy ],[sz]]))
     
-CONTROLLER = 'tsid_flex'             # either 'tsid_rigid' or 'tsid_flex' or 'tsid_adm' or 'tsid_mistry'
-F_DISTURB = np.matrix([0e2, 0, 0]).T
-COM_SIN_AMP = np.array([0.03, 0.0])
+CONTROLLER = 'tsid_mistry'             # either 'tsid_rigid' or 'tsid_flex' or 'tsid_adm' or 'tsid_mistry'
+F_DISTURB = np.matrix([4e2, 0, 0]).T
+COM_SIN_AMP = np.array([0.0, 0.0])
 ZETA = .3   # with zeta=0.03 and ndt=100 it is unstable
 
 PLOT_FORCES                         = 1
@@ -62,12 +62,12 @@ PLOT_ANGULAR_MOMENTUM_DERIVATIVES   = 0
 PLOT_JOINT_TORQUES                  = 1
 plut.SAVE_FIGURES                   = 1
 SAVE_DATA                           = 1
-SHOW_FIGURES                        = 0
+SHOW_FIGURES                        = 1
 
 #Simulation parameters
 dt  = 1e-3
 ndt = 10
-simulation_time = 2.0
+simulation_time = 3.0
 USE_ESTIMATOR = 0              # use real state for controller feedback
 T_DISTURB_BEGIN = 0.20          # Time at which the disturbance starts
 T_DISTURB_END   = 0.21          # Time at which the disturbance ends
@@ -171,19 +171,24 @@ centroidalEstimator = MomentumEKF(dt, m, g_vec, c0.A1, dc0.A1, np.array([l0]), f
 #Controller parameters
 w_post = 0.001                  # postural task weight
 Kp_post = 10                    # postural task proportional feedback gain
-Kp_com = 30                    # com proportional feedback gain
+Kp_com = 100.0                  # com proportional feedback gain
 Kd_com = 2*sqrt(Kp_com)         # com derivative feedback gain
 if(CONTROLLER=='tsid_flex'):
     w_post  = 0.3
-    (Kp_com, Kd_com, Ka_com, Kj_com) = (1.20e+06, 1.54e+05, 7.10e+03, 1.40e+02)
+#    (Kp_com, Kd_com, Ka_com, Kj_com) = (10611.05989124,  4182.20596787,   618.10999684,    40.5999999)     # poles [-10.3 -10.2 -10.1  -10.]
+#    (Kp_com, Kd_com, Ka_com, Kj_com) = (52674.83686644, 13908.30537877,  1377.10995895, 60.5999991) # poles [-15.30235117 -15.19247204 -15.10739361 -14.99778229]
+    (Kp_com, Kd_com, Ka_com, Kj_com) = (51104.68064395, 13519.53060753,  1342.87983029, 59.46954318) # dt poles [0.98481646 0.98491491 0.98501346 0.98511193]
+#    (Kp_com, Kd_com, Ka_com, Kj_com) = (1.64844157e+05, 3.27244115e+04, 2.43611027e+03, 8.06000045e+01) # ploes [-20.29999909 -20.20000804 -20.09999556 -20.00000185]
+#    (Kp_com, Kd_com, Ka_com, Kj_com) = (1.20e+06, 1.54e+05, 7.10e+03, 1.40e+02) # poles [-50. -40. -30. -20.]
     tsid = TsidFlexibleContact(robot, Ky, Kz, w_post, Kp_post, Kp_com, Kd_com, Ka_com, Kj_com, centroidalEstimator)
 elif(CONTROLLER=='tsid_rigid'):
     w_post  = 1e-2                  # postural task weight
     w_force = 1e-4
     tsid = Tsid(robot, Ky, Kz, w_post, w_force, Kp_post, Kp_com, centroidalEstimator)
 elif(CONTROLLER=='tsid_adm'):
-    Kp_adm = 1000.0                 # with kp_amd=1500 it starts being unstable
-    Kd_adm = 2*sqrt(Kp_adm)
+#    Kp_adm = 1000.0                 # with kp_amd=1500 it starts being unstable
+#    Kd_adm = 2*sqrt(Kp_adm)
+    Kp_adm, Kd_adm, Kp_com, Kd_com = 671.439915143, 59.4695431844, 76.1120682452, 20.1351309367 # discrete poles [0.98481646 0.98491491 0.98501346 0.98511193]
     tsid = TsidAdmittance(robot, Ky, Kz, w_post, Kp_post, Kp_com, Kp_adm, Kd_adm, centroidalEstimator)
 elif(CONTROLLER=='tsid_mistry'):
     w_post  = 1e-3                  # postural task weight
@@ -268,41 +273,36 @@ q,v = loop(q,v,f,df,log_size)
 
 if PLOT_FORCES:
     fields, labels, linest = [], [], []
-    fields += [['simu_lkf_0',   'ekf_f_0',        'tsid_lkf_0']]
-    labels += [['left force',   'ekf left force', 'left des force']]
-    linest += [['b', '--', ':']]
-    fields += [['simu_rkf_0',   'ekf_f_2',         'tsid_rkf_0']]
-    labels += [['right force',  'ekf right force', 'right des force']]
-    linest += [['b', '--', ':']]
-    fields += [['simu_lkf_1',   'ekf_f_1',        'tsid_lkf_1',     ]]
-    labels += [['left force',   'ekf left force', 'left des force'  ]]
-    linest += [['r', '--', ':']]
-    fields += [['simu_rkf_1',   'ekf_f_3',         'tsid_rkf_1']]
-    labels += [['right force',  'ekf right force', 'right des force']]
-    linest += [['r', '--', ':']]
-    plot_from_logger(lgr, dt, fields, labels, ['Force Y Left', 'Force Y Right', 'Force Z Left', 'Force Z Right'], linest, ncols=2)
+    fields += [['simu_lkf_0',   'ekf_f_0',        'tsid_lkf_0',     'simu_rkf_0',   'ekf_f_2',         'tsid_rkf_0']]
+    labels += [['left',         'ekf left',       'left des',       'right',        'ekf right',       'right des']]
+    linest += [['b', '--', ':', 'r', '--', ':']]
+    fields += [['simu_lkf_1',   'ekf_f_1',        'tsid_lkf_1',     'simu_rkf_1',   'ekf_f_3',         'tsid_rkf_1']]
+    labels += [['left',         'ekf left',       'left des',       'right',        'ekf right',       'right des']]
+    linest += [['b', '--', ':', 'r', '--', ':']]
+    plot_from_logger(lgr, dt, fields, labels, ['Force Y', 'Force Z'], linest, ylabel='Force [N]')
     plut.saveFigure('contact_forces_'+TEST_DESCR_STR)
 
 if PLOT_CONTACT_POINT_ACC:
-    ax_lbl = {0:'Y', 1:'Z'}    
-    for i in [0,1]:
-        fields = [['tsid_lf_a_des_'+str(i),         'simu_acc_lf_'+str(i)       ]] + [['tsid_rf_a_des_'+str(i),         'simu_acc_rf_'+str(i)       ]]
-        labels = [['des left foot acc '+ax_lbl[i],  'left foot acc '+ax_lbl[i]  ]] + [['des right foot acc '+ax_lbl[i], 'right foot acc '+ax_lbl[i] ]]
-        linest = [[None,                            '--'                        ]] + [[None,                            '--'                        ]]
-        plot_from_logger(lgr, dt, fields, labels, ['Contact Point Accelerations', 'Contact Point Accelerations'], linest, ncols=1)
-        plut.saveFigure('contact_point_acc_'+ax_lbl[i]+'_'+TEST_DESCR_STR)
-        
+    ax_lbl = {0:'Y', 1:'Z'}
+    f_names = ['simu_acc_lf_', 'simu_acc_rf_', 'tsid_lf_a_des_', 'tsid_rf_a_des_']
+    fields  = [[s+'0' for s in f_names]] + [[s+'1' for s in f_names]]
+    labels = 2*[['real left', 'real right', 'des left', 'des right']]
+    linest = 2*[['b',         'r',          '--',       '--'       ]]
+    plot_from_logger(lgr, dt, fields, labels, 'Contact Point Accelerations', linest, ylabel=['Acceleration '+s+' [m/s^2]' for s in ['Y','Z']])
+    plut.saveFigure('contact_point_acc_'+TEST_DESCR_STR)
+
 if PLOT_COM_TRACKING :
     ax_lbl = {0:'Y', 1:'Z'}    
     for i in [0,1]:
         fields, labels, linest = [], [], []
-        fields += [['simu_com_p_'+str(i),  'tsid_comref_'+str(i) ]]
-        labels += [['com '+ax_lbl[i], 'ref com '+ax_lbl[i]  ]]
-        linest += [[None,             '--']]
-        fields += [['simu_com_v_'+str(i)      ]] + [['simu_com_a_'+str(i), 'tsid_com_a_des_'+str(i)]] + [['simu_com_j_'+str(i)  ]]
-        labels += [['com vel '+ax_lbl[i]      ]] + [['com acc '+ax_lbl[i], 'com acc des '+ax_lbl[i]]] + [['com jerk '+ax_lbl[i] ]]
-        linest += [[None                      ]] + [[None,                 '--'                    ]] + [[None                  ]]
-        plot_from_logger(lgr, dt, fields, labels, ['CoM', 'CoM Vel', 'CoM Acc', 'CoM Jerk'], linest, ncols=1)
+        fields += [['simu_com_p_'+str(i),  'tsid_comref_'+str(i)]]
+        labels += [['real',                'reference'          ]]
+        linest += [[None,                  '--'                 ]]
+        fields += [['simu_com_v_'+str(i) ]] + [['simu_com_a_'+str(i), 'tsid_com_a_des_'+str(i)]] + [['simu_com_j_'+str(i) ]]
+        labels += [['real'               ]] + [['real',               'desired'               ]] + [['real'               ]]
+        linest += [[None                 ]] + [[None,                 '--'                    ]] + [[None                 ]]
+        ylabels = [s+' '+ax_lbl[i]+' '+um for (s,um) in zip(['Pos.', 'Vel.', 'Acc.', 'Jerk'], ['[m]', '[m/s]', '[m/s^2]', '[m/s^3]'])]
+        plot_from_logger(lgr, dt, fields, labels, titles='Center of Mass', linestyles=linest, ylabel=ylabels)
         plut.saveFigure('com_tracking_'+ax_lbl[i]+'_'+TEST_DESCR_STR)
 
 if PLOT_COM_ESTIMATION :
@@ -318,7 +318,8 @@ if PLOT_COM_ESTIMATION :
         fields += [['simu_com_j_'+str(i),  'tsid_com_j_est_'+str(i)       ]]
         labels += [['com jerk '+ax_lbl[i], 'estimated com jerk '+ax_lbl[i]]]
         linest += [[None, '--']]
-        plot_from_logger(lgr, dt, fields, labels, ['CoM', 'CoM Vel', 'CoM Acc', 'CoM Jerk'], linest, ncols=1)
+        ylabels = [s+' '+ax_lbl[i]+' '+um for (s,um) in zip(['Pos.', 'Vel.', 'Acc.', 'Jerk'], ['[m]', '[m/s]', '[m/s^2]', '[m/s^3]'])]
+        plot_from_logger(lgr, dt, fields, labels, titles='Center of Mass', linestyles=linest, ylabel=ylabels)
         plut.saveFigure('com_estimate_'+ax_lbl[i]+'_'+TEST_DESCR_STR)
 
 #plot_from_logger(lgr, dt, [['tsid_dv_'+str(i), 'simu_dv_'+str(i)] for i in range(4)])  
@@ -332,7 +333,7 @@ if PLOT_ANGULAR_MOMENTUM_DERIVATIVES:
     plut.saveFigure('angular_momentum_'+TEST_DESCR_STR)
 
 if(PLOT_JOINT_TORQUES):
-    plot_from_logger(lgr, dt, [['tsid_tau_'+str(i) for i in range(4)]], [['Joint torque '+str(i) for i in range(4)]])
+    plot_from_logger(lgr, dt, [['tsid_tau_'+str(i) for i in range(4)]], [['right hip', 'right knee', 'left hip', 'left knee']], ylabel='Joint Generalized Force [N]/[Nm]')
     plut.saveFigure('joint_torques_'+TEST_DESCR_STR)
     
 if(SAVE_DATA):
