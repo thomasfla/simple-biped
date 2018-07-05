@@ -49,7 +49,7 @@ def com_traj(t, c_init, c_final, T):
     return (np.matrix([[py ],[pz]]), np.matrix([[vy ],[vz]]), 
             np.matrix([[ay ],[az]]), np.matrix([[jy ],[jz]]), np.matrix([[sy ],[sz]]))
     
-CONTROLLER = 'tsid_mistry'             # either 'tsid_rigid' or 'tsid_flex' or 'tsid_adm' or 'tsid_mistry'
+CONTROLLER = 'tsid_flex'             # either 'tsid_rigid' or 'tsid_flex' or 'tsid_adm' or 'tsid_mistry'
 F_DISTURB = np.matrix([4e2, 0, 0]).T
 COM_SIN_AMP = np.array([0.0, 0.0])
 ZETA = .3   # with zeta=0.03 and ndt=100 it is unstable
@@ -177,8 +177,9 @@ if(CONTROLLER=='tsid_flex'):
     w_post  = 0.3
 #    (Kp_com, Kd_com, Ka_com, Kj_com) = (10611.05989124,  4182.20596787,   618.10999684,    40.5999999)     # poles [-10.3 -10.2 -10.1  -10.]
 #    (Kp_com, Kd_com, Ka_com, Kj_com) = (52674.83686644, 13908.30537877,  1377.10995895, 60.5999991) # poles [-15.30235117 -15.19247204 -15.10739361 -14.99778229]
-    (Kp_com, Kd_com, Ka_com, Kj_com) = (51104.68064395, 13519.53060753,  1342.87983029, 59.46954318) # dt poles [0.98481646 0.98491491 0.98501346 0.98511193]
 #    (Kp_com, Kd_com, Ka_com, Kj_com) = (1.64844157e+05, 3.27244115e+04, 2.43611027e+03, 8.06000045e+01) # ploes [-20.29999909 -20.20000804 -20.09999556 -20.00000185]
+    (Kp_com, Kd_com, Ka_com, Kj_com) = (2.28323600e+05, 4.76834812e+04, 3.35391925e+03, 9.68316039e+01) # poles 10, 20, 30, 40
+#    (Kp_com, Kd_com, Ka_com, Kj_com) = (7.78064620e+05, 1.03624061e+05, 5.18844741e+03, 1.16188573e+02) # poles -30
 #    (Kp_com, Kd_com, Ka_com, Kj_com) = (1.20e+06, 1.54e+05, 7.10e+03, 1.40e+02) # poles [-50. -40. -30. -20.]
     tsid = TsidFlexibleContact(robot, Ky, Kz, w_post, Kp_post, Kp_com, Kd_com, Ka_com, Kj_com, centroidalEstimator)
 elif(CONTROLLER=='tsid_rigid'):
@@ -186,9 +187,13 @@ elif(CONTROLLER=='tsid_rigid'):
     w_force = 1e-4
     tsid = Tsid(robot, Ky, Kz, w_post, w_force, Kp_post, Kp_com, centroidalEstimator)
 elif(CONTROLLER=='tsid_adm'):
-#    Kp_adm = 1000.0                 # with kp_amd=1500 it starts being unstable
-#    Kd_adm = 2*sqrt(Kp_adm)
-    Kp_adm, Kd_adm, Kp_com, Kd_com = 671.439915143, 59.4695431844, 76.1120682452, 20.1351309367 # discrete poles [0.98481646 0.98491491 0.98501346 0.98511193]
+#    Kp_adm, Kd_adm, Kp_com, Kd_com = 671.439915143, 59.4695431844, 76.1120682452, 20.1351309367 # discrete poles [0.98481646 0.98491491 0.98501346 0.98511193]
+    
+    # poles 10, 20, 30, 40
+    Kp_adm = 1676.95962612
+    Kd_adm = 96.8316038567
+    Kp_com = 136.153307873
+    Kd_com = 28.4344837195
     tsid = TsidAdmittance(robot, Ky, Kz, w_post, Kp_post, Kp_com, Kp_adm, Kd_adm, centroidalEstimator)
 elif(CONTROLLER=='tsid_mistry'):
     w_post  = 1e-3                  # postural task weight
@@ -279,7 +284,7 @@ if PLOT_FORCES:
     fields += [['simu_lkf_1',   'ekf_f_1',        'tsid_lkf_1',     'simu_rkf_1',   'ekf_f_3',         'tsid_rkf_1']]
     labels += [['left',         'ekf left',       'left des',       'right',        'ekf right',       'right des']]
     linest += [['b', '--', ':', 'r', '--', ':']]
-    plot_from_logger(lgr, dt, fields, labels, ['Force Y', 'Force Z'], linest, ylabel='Force [N]')
+    plot_from_logger(lgr, dt, fields, labels, 'Contact Forces', linest, ylabel=['Y [N]', 'Z [N]'])
     plut.saveFigure('contact_forces_'+TEST_DESCR_STR)
 
 if PLOT_CONTACT_POINT_ACC:
@@ -288,7 +293,7 @@ if PLOT_CONTACT_POINT_ACC:
     fields  = [[s+'0' for s in f_names]] + [[s+'1' for s in f_names]]
     labels = 2*[['real left', 'real right', 'des left', 'des right']]
     linest = 2*[['b',         'r',          '--',       '--'       ]]
-    plot_from_logger(lgr, dt, fields, labels, 'Contact Point Accelerations', linest, ylabel=['Acceleration '+s+' [m/s^2]' for s in ['Y','Z']])
+    plot_from_logger(lgr, dt, fields, labels, 'Contact Point Accelerations', linest, ylabel=[s+' [m/s^2]' for s in ['Y','Z']])
     plut.saveFigure('contact_point_acc_'+TEST_DESCR_STR)
 
 if PLOT_COM_TRACKING :

@@ -39,8 +39,8 @@ def compute_system_dynamics_dt(K, dt):
 dt = 1e-3
 #des_gains = np.array([1.20e+06, 1.54e+05, 7.10e+03, 1.40e+02])    # desired gains of 4-th order closed-loop system
 #des_gains = np.array([52674.83686644, 13908.30537877,  1377.10995895, 60.5999991])
-p1 = -15.0
-dp = -0.1
+p1 = -10.0
+dp = -10.0
 des_poles = np.array([p1, p1+dp, p1+2*dp, p1+3*dp])
 #K = 23770.      # contact stiffness
 K = 239018.
@@ -74,4 +74,4 @@ print "\nEigenvalues corresponding to desired closed-loop gains of 4-th order sy
 print "\nEigenvalues of discrete-time closed-loop system:\n", ei_dt
 print "\nCorresponding gains for admittance control:"
 for gain in ['Kf', 'Kp_adm', 'Kd_adm', 'Kp_com', 'Kd_com']:
-    print gain+'=', locals()[gain]
+    print gain+' =', locals()[gain]
