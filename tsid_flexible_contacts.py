@@ -247,6 +247,7 @@ class TsidFlexibleContact:
         self.data.com_a_est  = com_a_est.A1
         self.data.com_j_est  = com_j_est.A1        
         self.data.com_s_des  = com_s_des.A1
+        self.data.com_s_exp  = (X*self.ddf_des).A1
         
         self.data.lkf    = f[:2].A1
         self.data.rkf    = f[2:].A1
