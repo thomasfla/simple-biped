@@ -15,6 +15,18 @@ def restert_viewer_server(procName='gepetto-gui', delay = 0.2):
     sleep(delay)
 
 
+def traj_norm(x):
+    ''' Given an NxP matrix representing a trajectory, where N is the number of time steps
+        and P is the size of the quantity, it computes the norm of the trajectory at each 
+        point in time.
+    '''
+    return np.sqrt(x.shape[1]*np.mean(x**2, axis=1))
+#    N = err.shape[0]
+#    err_norm = np.empty(N)
+#    for i in range(N):
+#        err_norm[i] = np.linalg.norm(err[i,:])
+#    return err_norm
+    
 def finite_diff(data, dt):
     fd = np.asarray(data).copy()
     fd[0] = 0.

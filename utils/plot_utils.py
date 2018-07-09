@@ -8,7 +8,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 
-DEFAULT_FONT_SIZE = 20;
+DEFAULT_FONT_SIZE = 40;
 DEFAULT_AXIS_FONT_SIZE = DEFAULT_FONT_SIZE;
 DEFAULT_LINE_WIDTH = 4; #13;
 DEFAULT_MARKER_SIZE = 4;

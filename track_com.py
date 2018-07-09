@@ -7,7 +7,7 @@ from math import pi,sqrt
 from hrp2_reduced import Hrp2Reduced
 import time 
 from simu import Simu
-from utils.utils_thomas import restert_viewer_server, traj_sinusoid, finite_diff
+from utils.utils_thomas import restert_viewer_server, traj_sinusoid, traj_norm, finite_diff
 from utils.logger import RaiLogger
 import matplotlib.pyplot as plt
 import utils.plot_utils as plut
@@ -49,10 +49,10 @@ def com_traj(t, c_init, c_final, T):
     return (np.matrix([[py ],[pz]]), np.matrix([[vy ],[vz]]), 
             np.matrix([[ay ],[az]]), np.matrix([[jy ],[jz]]), np.matrix([[sy ],[sz]]))
     
-CONTROLLER = 'tsid_flex'             # either 'tsid_rigid' or 'tsid_flex' or 'tsid_adm' or 'tsid_mistry'
+CONTROLLER = 'tsid_adm'             # either 'tsid_rigid' or 'tsid_flex' or 'tsid_adm' or 'tsid_mistry'
 F_DISTURB = np.matrix([0e2, 0, 0]).T
 COM_SIN_AMP = np.array([0.03, 0.0])
-ZETA = .2   # with zeta=0.03 and ndt=100 it is unstable
+ZETA = .3   # with zeta=0.03 and ndt=100 it is unstable
 
 PLOT_FORCES                         = 1
 PLOT_COM_ESTIMATION                 = 1
@@ -62,13 +62,13 @@ PLOT_ANGULAR_MOMENTUM_DERIVATIVES   = 1
 PLOT_JOINT_TORQUES                  = 1
 plut.SAVE_FIGURES                   = 1
 SAVE_DATA                           = 1
-SHOW_FIGURES                        = 1
+SHOW_FIGURES                        = 0
 
 #Simulation parameters
 dt  = 1e-3
 ndt = 10
 simulation_time = 2.0
-USE_ESTIMATOR = 1              # use real state for controller feedback
+USE_ESTIMATOR = 0              # use real state for controller feedback
 T_DISTURB_BEGIN = 0.20          # Time at which the disturbance starts
 T_DISTURB_END   = 0.21          # Time at which the disturbance ends
 
@@ -196,9 +196,12 @@ elif(CONTROLLER=='tsid_rigid'):
     w_force = 1e-4
     tsid = Tsid(robot, Ky, Kz, w_post, w_force, Kp_post, Kp_com, centroidalEstimator)
 elif(CONTROLLER=='tsid_adm'):
+    Kf = np.matrix(np.diagflat([1.0/Ky, 1.0/Kz, 1.0/Ky, 1.0/Kz]))   # Stiffness of the feet spring
 #    Kp_adm, Kd_adm, Kp_com, Kd_com = 1676.95962612, 96.8316038567, 136.153307873, 28.4344837195 # poles 10, 20, 30, 40
-    Kp_adm, Kd_adm, Kp_com, Kd_com = 1038.29702511, 77.9184247381, 60.731488824, 20.3902792501  # poles 5, 15, 25, 35
-    tsid = TsidAdmittance(robot, Ky, Kz, w_post, Kp_post, Kp_com, Kp_adm, Kd_adm, centroidalEstimator)
+#    Kp_adm, Kd_adm, Kp_com, Kd_com = 1038.29702511, 77.9184247381, 60.731488824, 20.3902792501  # poles 5, 15, 25, 35
+#    Kp_adm, Kd_adm, Kp_com, Kd_com, Kf = 188.781277292, 77.9184247381, 33.4023188532, 11.2146535876, 10*Kf # poles 5, 15, 25, 35
+    Kp_adm, Kd_adm, Kp_com, Kd_com, Kf = 20.5603371308, 77.9184247381, 30.6694018561, 10.2970910213, 100*Kf # poles 5, 15, 25, 35
+    tsid = TsidAdmittance(robot, Ky, Kz, w_post, Kp_post, Kp_com, Kf, Kp_adm, Kd_adm, centroidalEstimator)
 elif(CONTROLLER=='tsid_mistry'):
     w_post  = 1e-3                  # postural task weight
     tsid = TsidMistry(robot, Ky, Kz, By, Bz, w_post, Kp_post, Kp_com, Kd_com, dt, centroidalEstimator)
@@ -280,6 +283,15 @@ def loop(q, v, f, df, niter, ndt=None, dt=None, tsleep=.9, fdisplay=100):
 q,v,f,df = q0.copy(), v0.copy(), f0.copy(), df0.copy()
 q,v = loop(q,v,f,df,log_size)
 
+
+# compute CoM tracking error
+com_err = np.empty((log_size,2))
+com_err[:,0] = np.array(lgr.simu_com_p_0) - np.array(lgr.tsid_comref_0)
+com_err[:,1] = np.array(lgr.simu_com_p_1) - np.array(lgr.tsid_comref_1)
+com_err_norm = traj_norm(com_err)
+print "CoM tracking RMSE:    %.1f mm"%(1e3*np.mean(com_err_norm))
+print "Max CoM tracking err: %.1f mm"%(1e3*np.max(com_err_norm))
+
 if PLOT_FORCES:
     fields, labels, linest = [], [], []
     fields += [['simu_lkf_0',          'tsid_lkf_0',     'simu_rkf_0',          'tsid_rkf_0']]
@@ -320,7 +332,7 @@ if PLOT_COM_TRACKING :
         plot_from_logger(lgr, dt, fields, labels, titles='Center of Mass '+ax_lbl[i], linestyles=linest, ylabel=ylabels)
         plut.saveFigure('com_tracking_'+ax_lbl[i]+TEST_DESCR_STR)
 
-if PLOT_COM_ESTIMATION :
+if PLOT_COM_ESTIMATION and USE_ESTIMATOR:
     ax_lbl = {0:'Y', 1:'Z'}    
     for i in [0,1]:
         fields  = [['simu_com_p_'+str(i),  'tsid_com_p_est_'+str(i) ]] + [['simu_com_v_'+str(i),  'tsid_com_v_est_'+str(i) ]]

@@ -39,11 +39,11 @@ def compute_system_dynamics_dt(K, dt):
 dt = 1e-3
 #des_gains = np.array([1.20e+06, 1.54e+05, 7.10e+03, 1.40e+02])    # desired gains of 4-th order closed-loop system
 #des_gains = np.array([52674.83686644, 13908.30537877,  1377.10995895, 60.5999991])
-p1 = -10.0
+p1 = -5.0
 dp = -10.0
 des_poles = np.array([p1, p1+dp, p1+2*dp, p1+3*dp])
-#K = 23770.      # contact stiffness
-K = 239018.
+K = 23770.      # contact stiffness
+#K = 239018.
 DISCRETE_POLE_PLACEMENT = 1
 
 if('des_gains' not in locals()):
@@ -60,7 +60,7 @@ if('des_gains' not in locals()):
 
 # COMPUTE ADMITTANCE CONTROL GAINS
 (K1, K2, K3, K4) = des_gains.tolist()
-Kf = 1.0/K              # force feedback gain
+Kf = 100.0/K              # force feedback gain
 Kd_adm = K4                 # contact point velocity gain
 Kp_adm = K3 / (1+K*Kf)      # contact point position gain
 Kd_com = K2 / (K*Kf*Kp_adm)    # CoM derivative gain

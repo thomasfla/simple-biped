@@ -17,7 +17,7 @@ class TsidAdmittance:
     
     HESSIAN_REGULARIZATION = 1e-8
     
-    def __init__(self, robot, Ky, Kz, w_post, Kp_post, Kp_com, Kp_adm=400.0, Kd_adm=40.0, estimator=None):
+    def __init__(self, robot, Ky, Kz, w_post, Kp_post, Kp_com, Kf, Kp_adm=400.0, Kd_adm=40.0, estimator=None):
         self.robot = robot
         self.estimator = estimator
         self.NQ = robot.model.nq
@@ -32,7 +32,7 @@ class TsidAdmittance:
         self.Kz = Kz
         self.Kspring = -np.matrix(np.diagflat([Ky,Kz,Ky,Kz]))   # Stiffness of the feet spring
         self.Kinv = np.linalg.inv(self.Kspring)
-        self.Kf = -self.Kinv
+        self.Kf = Kf #-self.Kinv
         self.Kp_adm = Kp_adm
         self.Kd_adm = Kd_adm
         
