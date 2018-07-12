@@ -49,10 +49,11 @@ def com_traj(t, c_init, c_final, T):
     return (np.matrix([[py ],[pz]]), np.matrix([[vy ],[vz]]), 
             np.matrix([[ay ],[az]]), np.matrix([[jy ],[jz]]), np.matrix([[sy ],[sz]]))
     
-CONTROLLER = 'tsid_adm'             # either 'tsid_rigid' or 'tsid_flex' or 'tsid_adm' or 'tsid_mistry'
+CONTROLLER = 'tsid_flex'             # either 'tsid_rigid' or 'tsid_flex' or 'tsid_adm' or 'tsid_mistry'
 F_DISTURB = np.matrix([0e2, 0, 0]).T
 COM_SIN_AMP = np.array([0.03, 0.0])
-ZETA = .3   # with zeta=0.03 and ndt=100 it is unstable
+ZETA = .2   # with zeta=0.03 and ndt=100 it is unstable
+tauc = 0*3.0*np.array([1.,1.,1.,1.])#coulomb friction
 
 PLOT_FORCES                         = 1
 PLOT_COM_ESTIMATION                 = 1
@@ -60,15 +61,15 @@ PLOT_COM_TRACKING                   = 1
 PLOT_CONTACT_POINT_ACC              = 1
 PLOT_ANGULAR_MOMENTUM_DERIVATIVES   = 1
 PLOT_JOINT_TORQUES                  = 1
-plut.SAVE_FIGURES                   = 1
-SAVE_DATA                           = 1
-SHOW_FIGURES                        = 0
+plut.SAVE_FIGURES                   = 0
+SAVE_DATA                           = 0
+SHOW_FIGURES                        = 1
 
 #Simulation parameters
 dt  = 1e-3
-ndt = 10
+ndt = 30
 simulation_time = 2.0
-USE_ESTIMATOR = 0              # use real state for controller feedback
+USE_ESTIMATOR = 1              # use real state for controller feedback
 T_DISTURB_BEGIN = 0.20          # Time at which the disturbance starts
 T_DISTURB_END   = 0.21          # Time at which the disturbance ends
 
@@ -103,6 +104,7 @@ print "- f_dist =       ", F_DISTURB[0,0]
 print "- zeta =         ", ZETA
 print "- use estimator =", USE_ESTIMATOR
 print "- T =            ", simulation_time
+print "- tau_c =        ", tauc
 print "\n"
      
 TEST_DESCR_STR = CONTROLLER + '_zeta_'+str(ZETA)
@@ -128,10 +130,7 @@ if useViewer:
     robot.viewer.setCameraTransform(0,[1.9154722690582275, -0.2266872227191925, 0.1087859719991684,
                                        0.5243823528289795, 0.518651008605957, 0.4620114266872406, 0.4925136864185333])
 
-
-
 #robot parameters
-tauc = 0.*np.array([1.,1.,1.,1.])#coulomb friction
 Ky = 23770.
 Kz = 239018.
 By = ZETA*2*sqrt(Ky) #50e0
@@ -166,7 +165,7 @@ ns = NoisyState(dt,robot,Ky,Kz)
 # noise standard deviation
 n_x, n_u, n_y = 9+4, 4, 9
 sigma_x_0 = 1e-2                    # initial state estimate std dev
-sigma_ddf   = 1e4*np.ones(4)          # control (i.e. force accelerations) noise std dev used in EKF
+sigma_ddf   = 1e2*np.ones(4)          # control (i.e. force accelerations) noise std dev used in EKF
 sigma_f     = np.array([ns.std_fy, ns.std_fz, ns.std_fy, ns.std_fz])  # force measurement noise std dev
 sigma_f_dist = 1e1*np.ones(2)          # external force noise std dev used in EKF
 sigma_c  = 1e-3*np.ones(2)             # CoM position measurement noise std dev
@@ -216,16 +215,18 @@ tsid.callback_com = lambda t : com_traj(t, COM_REF_START, COM_REF_END, COM_TRAJ_
 # SETUP LOGGER
 lgr = RaiLogger()
 vc, vr = 'vector', 'variable'
-tsid_var_names  = ['dv', 'tau', 'com_p_mes', 'com_v_mes', 'com_p_est', 'com_v_est', 'comref', 'lkf', 'rkf']
-tsid_var_types  = 9*[vc,]
+tsid_var_names  = ['dv', 'tau', 'com_p_mes', 'com_v_mes', 'com_p_est', 'com_v_est', 'comref']
+tsid_var_types  = 7*[vc,]
 
+if CONTROLLER=='tsid_rigid' or CONTROLLER=='tsid_adm':
+    tsid_var_names  += ['lkf', 'rkf']
+    tsid_var_types  += 2*[vc,]
 if CONTROLLER=='tsid_mistry':
     tsid_var_names += ['com_j_des', 'com_j_exp', 'df_des']
     tsid_var_types += [     vc    ,   vc       ,    vc]
 if CONTROLLER=='tsid_flex' or CONTROLLER=='tsid_mistry':
     tsid_var_names += [ 'lf_a_des', 'rf_a_des']
     tsid_var_types += [     vc,         vc    ]
-
 if CONTROLLER=='tsid_flex':
     #Integral of angular momentum approximated by base orientation, angular momentum, its 1st and 2nd derivative, its desired 3rd derivative
     tsid_var_names += ['iam', 'dddam_des', 'robotInertia']
@@ -234,10 +235,10 @@ if CONTROLLER=='tsid_flex':
     tsid_var_types += 5*[vc,]
 else:
     tsid_var_names += ['com_a_des']
-    tsid_var_types += [     vc]
+    tsid_var_types += [vc]
 lgr.auto_log_variables(tsid.data, tsid_var_names, tsid_var_types, 'tsid')
 
-lgr.auto_log_variables(simu, ['dv', 'com_p', 'com_v', 'com_a', 'com_j', 'vlf', 'vrf', 'acc_lf', 'acc_rf', 'df'], 10*[vc,], 'simu')
+lgr.auto_log_variables(simu, ['dv', 'com_p', 'com_v', 'com_a', 'com_j', 'com_s', 'vlf', 'vrf', 'acc_lf', 'acc_rf', 'df'], 11*[vc,], 'simu')
 lgr.auto_log_variables(simu, ['am', 'dam', 'ddam'], 3*[vr,], 'simu')
 lgr.auto_log_variables(simu, ['f'], [vc], log_var_names=[['simu_'+s for s in ['lkf_0', 'lkf_1', 'rkf_0', 'rkf_1']]])
 
@@ -300,14 +301,19 @@ if PLOT_FORCES:
     fields += [['simu_lkf_1',          'tsid_lkf_1',     'simu_rkf_1',          'tsid_rkf_1']]
     labels += [['left',                'left des',       'right',               'right des']]
     linest += [['b', '--', 'r', '--']]
-#    fields += [['simu_lkf_0',   'ekf_f_0',        'tsid_lkf_0',     'simu_rkf_0',   'ekf_f_2',         'tsid_rkf_0']]
-#    labels += [['left',         'ekf left',       'left des',       'right',        'ekf right',       'right des']]
-#    linest += [['b', '--', ':', 'r', '--', ':']]
-#    fields += [['simu_lkf_1',   'ekf_f_1',        'tsid_lkf_1',     'simu_rkf_1',   'ekf_f_3',         'tsid_rkf_1']]
-#    labels += [['left',         'ekf left',       'left des',       'right',        'ekf right',       'right des']]
-#    linest += [['b', '--', ':', 'r', '--', ':']]
     plot_from_logger(lgr, dt, fields, labels, 'Contact Forces', linest, ylabel=['Y [N]', 'Z [N]'])
     plut.saveFigure('contact_forces'+TEST_DESCR_STR)
+
+    fields, labels, linest = [], [], []
+    fields += [['simu_lkf_0',   'ekf_f_0',    'simu_rkf_0',   'ekf_f_2'  ]]
+    labels += [['left',         'ekf left',   'right',        'ekf right']]
+    linest += [['b', '--', 'r', '--']]
+    fields += [['simu_lkf_1',   'ekf_f_1',    'simu_rkf_1',   'ekf_f_3'  ]]
+    labels += [['left',         'ekf left',   'right',        'ekf right']]
+    linest += [['b', '--', 'r', '--']]
+    plot_from_logger(lgr, dt, fields, labels, 'Contact Forces', linest, ylabel=['Y [N]', 'Z [N]'])
+    plut.saveFigure('contact_forces_est'+TEST_DESCR_STR)
+
 
 if PLOT_CONTACT_POINT_ACC:
     ax_lbl = {0:'Y', 1:'Z'}
@@ -349,7 +355,7 @@ if CONTROLLER=='tsid_mistry':
     plot_from_logger(lgr, dt, [['tsid_com_j_des_'+str(i), 'tsid_com_j_exp_'+str(i), 'simu_com_j_'+str(i)] for i in range(1)], linestyles=[[None,'--',':']]*2)    
     plot_from_logger(lgr, dt, [['tsid_df_des_'+str(i), 'simu_df_'+str(i)] for i in range(4)], linestyles=[[None,'--']]*4, ncols=2)
 elif CONTROLLER=='tsid_flex':
-    plot_from_logger(lgr, dt, [['tsid_com_s_des_'+str(i), 'tsid_com_s_exp_'+str(i), 'simu_com_s_'+str(i)] for i in range(1)], linestyles=[[None,'--',':']]*2)
+    plot_from_logger(lgr, dt, [['tsid_com_s_des_'+str(i), 'tsid_com_s_exp_'+str(i), 'simu_com_s_'+str(i)] for i in range(2)], linestyles=[[None,'--',':']]*2)
     
 if PLOT_ANGULAR_MOMENTUM_DERIVATIVES:
     plot_from_logger(lgr, dt, [['simu_am'], ['simu_dam'], ['simu_ddam']])
