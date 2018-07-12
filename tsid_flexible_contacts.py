@@ -160,6 +160,7 @@ class TsidFlexibleContact:
 #            am_est = robot.get_angularMomentum(q, v)
 #            com_est, com_v_est, com_a_est, com_j_est = com_mes, com_v_mes, com_a_mes, com_j_mes
 #            f_est, df_est = f_meas, df_meas
+#            f_est = f_meas
         
         
         # Formulate dynamic constrains  (ne sert a rien...)************* todo remove and make the problem smaller
@@ -172,6 +173,7 @@ class TsidFlexibleContact:
         Aec = np.vstack([np.hstack([M ,-Jc.T,-S.T]),
                          np.hstack([matlib.zeros([4,7]), matlib.eye(4), matlib.zeros([4,4])])])
         bec = np.vstack([-h, f_est])
+#        bec = np.vstack([-h, f_meas])
         
  
         # CoM TASK COMPUTATIONS
