@@ -159,7 +159,9 @@ class Simu:
     def simu(self,q,v,tau):
         '''Simu performs self.ndt steps each lasting self.dt/self.ndt seconds.'''
         vlf_0, vrf_0 = self.vlf.copy(), self.vrf.copy()
-        com_p_0, com_v_0, com_a_0 = self.robot.get_com_and_derivatives(q, v, self.f)
+        # compute df based on current contact point velocities
+        df_0 = np.vstack([(self.Klf*self.vlf)[0:2],(self.Krf*self.vrf)[0:2]])
+        com_p_0, com_v_0, com_a_0, com_j_0 = self.robot.get_com_and_derivatives(q, v, self.f, df_0)
         f_0 = self.f.copy()
         
         for i in range(self.ndt):
@@ -168,10 +170,12 @@ class Simu:
         # compute average acc values during simulation time step
         self.acc_lf = (self.vlf - vlf_0)/self.dt
         self.acc_rf = (self.vrf - vrf_0)/self.dt
-        self.df     = (self.f - f_0)/self.dt
-        self.com_p, self.com_v, com_a = self.robot.get_com_and_derivatives(q, v, self.f)
+        self.df     = (self.f - f_0)/self.dt    # this df is the average over the time step
+        df_end = np.vstack([(self.Klf*self.vlf)[0:2],(self.Krf*self.vrf)[0:2]])
+        self.com_p, self.com_v, com_a, com_j = self.robot.get_com_and_derivatives(q, v, self.f, df_end)
         self.com_a = (self.com_v - com_v_0)/self.dt
         self.com_j = (com_a - com_a_0)/self.dt
+        self.com_s = (com_j - com_j_0)/self.dt
         self.am, self.dam, self.ddam = self.robot.get_angular_momentum_and_derivatives(q, v, self.f, self.df, self.Krf[0,0], self.Krf[1,1])
         
         return q,v,self.f,self.df
