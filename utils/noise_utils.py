@@ -61,6 +61,12 @@ class NoisyState:
         f_noisy[2]-=np.mod(f_noisy[2],self.quantum_fy) # Y
         f_noisy[1]-=np.mod(f_noisy[1],self.quantum_fz) # Z
         f_noisy[3]-=np.mod(f_noisy[3],self.quantum_fz) # Z
+        
+        dt = 1e-3
+        df_noisy[0]+=np.matrix(np.random.normal(0,self.std_fy)/dt).T # Y
+        df_noisy[2]+=np.matrix(np.random.normal(0,self.std_fy)/dt).T # Y
+        df_noisy[1]+=np.matrix(np.random.normal(0,self.std_fz)/dt).T # Z
+        df_noisy[3]+=np.matrix(np.random.normal(0,self.std_fz)/dt).T # Z
 
         #~ return q,v,f,df
         return q_noisy,v_noisy,f_noisy,df_noisy
