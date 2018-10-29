@@ -29,10 +29,11 @@ def traj_norm(x):
     
 def finite_diff(data, dt):
     fd = np.asarray(data).copy()
-    fd[0] = 0.
-    fd[1:,] -= np.asarray(data[:-1])
+#    fd[0] = 0.
+#    fd[1:,] -= np.asarray(data[:-1])
+    fd[:-1,] = fd[1:,] - np.asarray(data[:-1])
     fd = fd *(1/dt)
-    fd[0] = np.nan # just ignore the first points for display
+    fd[-1] = np.nan # just ignore the last points for display
     return fd
     
 
