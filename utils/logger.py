@@ -208,6 +208,36 @@ class RaiLogger(DataCollector):
         except:
             print "Error while adding vector %s with data:"%(field), data_vec
             raise
+            
+            
+    def add_stream(self, data, field, unit=''):
+        """
+        Add a new stream of data.
+
+        :param data: the list of floats or integers to add
+        :param field: the name of the stream
+        :param unit: the unit associated to the data
+        """
+
+        if not isinstance(field, basestring):
+            raise TypeError(
+                "field should be a string, instead got {} of type {}."
+                    .format(field, type(field)))
+
+        if not isinstance(unit, basestring):
+            raise TypeError(
+                "unit should be a string, instead got {} of type {}."
+                    .format(unit, type(unit)))
+
+        data = list(data)
+
+        if field not in self.fields:
+            self.data.append(data)
+            self.fields[field] = len(self.data) - 1
+            self.units[field] = unit
+
+        assert len(self.data) == len(self.fields) == len(self.units)
+
 
 def exampleSimpleArrayLogger():    
     N = 10
