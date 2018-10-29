@@ -49,7 +49,7 @@ class Hrp2Reduced:
         if useViewer:
             robot.initDisplay( loadModel = loadModel)
             if 'viewer' not in robot.__dict__: robot.initDisplay()
-            for n in robot.visual_model.geometryObjects: robot.viewer.gui.setVisibility(robot.viewerNodeNames(n),'ON')
+            for n in robot.visual_model.geometryObjects: robot.viewer.gui.setVisibility(robot.getViewerNodeName(n, se3.GeometryType.VISUAL),'OFF')
 
         robot.q0 = np.matrix( [
                 0., 0., 0.648702, 0., 0. , 0., 1.,               # Free flyer
