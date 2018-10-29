@@ -8,12 +8,11 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 
-DEFAULT_FONT_SIZE = 40;
+DEFAULT_FONT_SIZE = 35;
 DEFAULT_AXIS_FONT_SIZE = DEFAULT_FONT_SIZE;
 DEFAULT_LINE_WIDTH = 4; #13;
 DEFAULT_MARKER_SIZE = 4;
 DEFAULT_FONT_FAMILY = 'sans-serif'
-DEFAULT_FONT_SIZE = DEFAULT_FONT_SIZE;
 DEFAULT_FONT_SERIF = ['Times New Roman', 'Times','Bitstream Vera Serif', 'DejaVu Serif', 'New Century Schoolbook', 'Century Schoolbook L', 'Utopia', 'ITC Bookman', 'Bookman', 'Nimbus Roman No9 L', 'Palatino', 'Charter', 'serif'];
 DEFAULT_FIGURE_FACE_COLOR = 'white'    # figure facecolor; 0.75 is scalar gray
 DEFAULT_LEGEND_FONT_SIZE = DEFAULT_FONT_SIZE;
@@ -100,6 +99,8 @@ def plot_from_logger(logger, dt, streams, labels=None, titles=None, linestyles=N
         
     i = 0
     for (sp_streams, sp_labels, sp_linestyles) in zip(streams, labels, linestyles):
+        if(sp_labels is None):
+            sp_labels = [None,]*len(sp_streams)
         for (stream, label, ls) in zip(sp_streams, sp_labels, sp_linestyles):
             try:
                 N = len(logger.get_streams(stream))
