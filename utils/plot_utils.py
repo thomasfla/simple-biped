@@ -105,6 +105,9 @@ def plot_from_logger(logger, dt, streams, labels=None, titles=None, linestyles=N
             try:
                 N = len(logger.get_streams(stream))
                 time = np.arange(0.0, dt*N, dt)
+                # sometimes the vector time has more elements than it should
+                if(len(time)>N):
+                    time = time[:N]
                 if( ls is None):
                     ax[i].plot(time, logger.get_streams(stream), label=label)
                 else:
