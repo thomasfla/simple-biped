@@ -83,7 +83,7 @@ def setAxisFontSize(ax, size):
         label.set_fontsize(size)
         label.set_bbox(dict(facecolor='white', edgecolor='None', alpha=0.65))
 
-def plot_from_logger(logger, dt, streams, labels=None, titles=None, linestyles=None, ncols=1, xlabel='Time [s]', ylabel=None):
+def plot_from_logger(logger, dt, streams, labels=None, titles=None, linestyles=None, ncols=1, xlabel='Time [s]', ylabel=None, yscale=None):
     nsubplots = len(streams)
     nrows = int(nsubplots/ncols)
     f, ax = plt.subplots(nrows, ncols, sharex=True);
@@ -127,6 +127,12 @@ def plot_from_logger(logger, dt, streams, labels=None, titles=None, linestyles=N
                 ax[i].set_ylabel(ylabel)
             else:
                 ax[i].set_ylabel(ylabel[i])
+        
+        if yscale is not None:
+            if isinstance(yscale, basestring):
+                ax[i].set_yscale(yscale)
+            else:
+                ax[i].set_yscale(yscale[i])
         i += 1
     if xlabel is not None:
         ax[-1].set_xlabel(xlabel)
