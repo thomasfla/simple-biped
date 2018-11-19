@@ -4,6 +4,8 @@ from math import pi,sqrt,cos,sin
 from quadprog import solve_qp
 import matplotlib.pyplot as plt
 from numpy import matlib
+from utils.tsid_utils import createContactForceInequalities
+from pinocchio_inv_dyn.acc_bounds_util_multi_dof import computeAccLimits, compute_min_ddq_stop, areStatesViable, computeVelViabBounds, compute_min_q_upper_bound
 
 try:
     from IPython import embed
@@ -16,7 +18,7 @@ class Empty:
 class TsidFlexibleContact:
     HESSIAN_REGULARIZATION = 1e-8
     
-    def __init__(self,robot,Ky,Kz,w_post,Kp_post,Kp_com, Kd_com, Ka_com, Kj_com, estimator = None):
+    def __init__(self,robot,Ky,Kz,w_post,Kp_post,Kp_com, Kd_com, Ka_com, Kj_com, fMin, mu, ddf_max, dt, estimator = None):
         self.robot = robot
         self.NQ = robot.model.nq
         self.NV = robot.model.nv
@@ -36,8 +38,10 @@ class TsidFlexibleContact:
         self.Kj_com = Kj_com
         self.Ky = Ky
         self.Kz = Kz
-        self.ddf_des = matlib.zeros(4)
+        self.fMin = fMin
+        
         self.data = Empty()
+        self.data.ddf_des = matlib.zeros(4)
         self.data.com_s_des = np.matrix([0.,0.]).T.A1 #need for update the com estimator at first iteration
         com_p_ref = np.matrix([0.,0.53]).T
         com_v_ref = np.matrix([0.,0.]).T
@@ -51,6 +55,20 @@ class TsidFlexibleContact:
         self.post_a_ref = matlib.zeros(7).T
         self.A_post     = w_post*matlib.eye(7, 7+4+4)
         self.Kspring    = -np.matrix(np.diagflat([Ky,Kz,Ky,Kz]))   # Stiffness of the feet spring
+
+        self.mu = mu
+        self.ddf_max = ddf_max
+        self.dt = dt        
+        (B, b) = createContactForceInequalities(self.mu, self.fMin) # B_f * f <= b_f
+        k = B.shape[0]
+        self.B_f = matlib.zeros((2*k,4));
+        self.b_f = matlib.zeros(2*k).T;
+        self.B_f[:k,:2] = B
+        self.B_f[k:,2:] = B
+        self.b_f[:k,0] = b
+        self.b_f[k:,0] = b
+        
+        self.ind = []
      
     def _compute_com_task(self, t, com_est, com_v_est, com_a_est, com_j_est):
         Kp_com,  Kd_com, Ka_com, Kj_com  = self.Kp_com, self.Kd_com, self.Ka_com, self.Kj_com
@@ -123,6 +141,7 @@ class TsidFlexibleContact:
         
         return dddam_des, Xl, Nl
         
+        
     def solve(self, t, q, v, f_meas, df_meas=None):
         robot=self.robot
         NQ,NV,NB,RF,LF,RK,LK = self.NQ,self.NV,self.NB,self.RF,self.LF,self.RK,self.LK
@@ -150,7 +169,7 @@ class TsidFlexibleContact:
             com_mes, com_v_mes, com_a_mes = robot.get_com_and_derivatives(q, v, f_meas)
             am = robot.get_angularMomentum(q, v)
             p = np.hstack((Mlf.translation[1:].A1, Mrf.translation[1:].A1))
-            self.estimator.predict_update(com_mes.A1, com_v_mes.A1, np.array([am]), f_meas.A1, p, self.ddf_des.A1)
+            self.estimator.predict_update(com_mes.A1, com_v_mes.A1, np.array([am]), f_meas.A1, p, self.data.ddf_des.A1)
             
             (com_est, com_v_est, am_est, f_est, df_est) = self.estimator.get_state(True)
             dummy1, dummy2, com_a_est, com_j_est = robot.get_com_and_derivatives(q, v, f_est, df_est)
@@ -202,15 +221,74 @@ class TsidFlexibleContact:
         A=np.vstack([A_momentum, self.A_post])
         b=np.vstack([b_momentum, b_post])
         
+        # Friction cone inequality constraints Aic * x >= bic
+        dt_f = 1.1*self.dt
+        
+#        Aic = -dt_f*B_f*self.Kspring*Jc
+#        viab_marg = -B_f*df_est + np.sqrt(-2*self.ddf_max*(B_f*f_est-b_f))
+#        if (viab_marg<=0.0).any():
+#            print "%.3f Warning: negative viability margins!"%(t), viab_marg.T
+#            
+#        margin = b_f - B_f*(f_est+dt_f*df_est)
+#        if (margin<=0.0).any():
+#            margin[margin<=0.0] = 0.0
+#            print "%.3f Warning: negative predicted margins!"%(t), margin.T
+#        bic = -np.sqrt(2*self.ddf_max*margin) + B_f*df_est + dt_f*B_f*self.Kspring*dJcdq
+        
+        b1 = np.matlib.ones(self.b_f.shape[0]).T
+        B_ddf_max = np.abs(self.B_f*np.matlib.ones((4,1))*self.ddf_max)
+        pos = self.B_f*f_est
+        vel = self.B_f*df_est
+        pos_min = -1e100*b1
+        pos_max = self.b_f.copy()
+        vel_max = 1e100*b1
+        
+#        viabViol = areStatesViable(pos, vel, pos_min, pos_max, vel_max, B_ddf_max);
+#        if(np.sum(viabViol)>0):
+#            print "Some constraints are not viable", np.where(viabViol)[0]
+        
+        ind_q = (pos>=pos_max).A1
+        if(np.sum(ind_q)>0):
+            new_pos_max = compute_min_q_upper_bound(pos[ind_q], vel[ind_q], B_ddf_max[ind_q])
+#            print "TSID-FLEX WARNING: some forces violate friction cones:", np.where(ind_q)[0], (pos[ind_q]-pos_max[ind_q]).T,
+#            print " old UB", pos_max[ind_q].T, "new UB", new_pos_max.T
+            print "TSID-FLEX WARNING: update B_f_max", np.where(ind_q)[0], "from", pos_max[ind_q].T, "to", new_pos_max.T
+            pos_max[ind_q] = new_pos_max + 1e-6
+#            pos_max[ind_q] = pos[ind_q] + 0.1
+            
+        B_ddf_stop = compute_min_ddq_stop(pos, vel, pos_min, pos_max);
+        ind = (B_ddf_stop > B_ddf_max).A1
+        if(np.sum(ind)>0):
+            self.ind = ind
+            print "TSID-FLEX WARNING: update B_ddf_max", np.where(ind)[0], "from", B_ddf_max[ind].T, "to", B_ddf_stop[ind].T
+            B_ddf_max[ind] = B_ddf_stop[ind]
+            
+        (B_ddf_LB, B_ddf_UB) = computeAccLimits(pos, vel, pos_min, pos_max, vel_max, B_ddf_max, dt_f, verbose=True, IMPOSE_ACCELERATION_BOUNDS=False)
+            
+        # B * ddf <= B_ddf_max
+        # B * K * ddp <= B_ddf_max
+        # B * K * J * dv <= B_ddf_max - B * K * dJdq
+        # -B * K * J * dv >= -B_ddf_max + B * K * dJdq
+        Aic = -self.B_f*self.Kspring*Jc
+        bic = -B_ddf_UB + self.B_f*self.Kspring*dJcdq
+        
+        Aic = np.hstack([Aic , matlib.zeros((Aic.shape[0], 8))])
+        
         #stack equality and inequality constrains
-        #~ Ac = np.vstack([Aec,Aic])
-        #~ bc = np.vstack([bec,bic])
-        Ac=Aec
-        bc=bec
+        Ac = np.vstack([Aec,Aic])
+        bc = np.vstack([bec,bic])
+#        Ac=Aec
+#        bc=bec
         #formulate the least squares as a quadratic problem *************
         H=(A.T*A).T + self.HESSIAN_REGULARIZATION*np.eye(A.shape[1])
         g=(A.T*b).T
         y_QP = solve_qp(H.A, g.A1, Ac.A.T, bc.A1, bec.shape[0])[0]
+        
+        # compute active inequalities
+        margins = Aic*np.matrix(y_QP).T - bic
+        if (margins<=1e-5).any():
+#            print "%.4f Active inequalities:"%(t), np.where(margins<=1e-5)[0] #margins.T
+            self.ind = (margins<=1e-5).A1
         
         # Solve with inverse *******************************************
         if 0:        
@@ -233,7 +311,7 @@ class TsidFlexibleContact:
                 
         # compute ddf_des for next loop EKF computations
         feet_a_des = Jc*dv + dJcdq
-        self.ddf_des = self.Kspring * feet_a_des
+        self.data.ddf_des = self.Kspring * feet_a_des
         
         # store data
         self.data.lf_a_des = feet_a_des[:2]
@@ -249,13 +327,51 @@ class TsidFlexibleContact:
         self.data.com_a_est  = com_a_est.A1
         self.data.com_j_est  = com_j_est.A1        
         self.data.com_s_des  = com_s_des.A1
-        self.data.com_s_exp  = (X*self.ddf_des).A1
+        self.data.com_s_exp  = (X*self.data.ddf_des).A1
         
         self.data.lkf    = f[:2].A1
         self.data.rkf    = f[2:].A1
         self.data.tau    = tau
         self.data.dv     = dv
         self.data.f      = f
+        
+        self.data.B_ddf_max = - B_ddf_max
+        self.data.B_ddf_UB  = - B_ddf_UB
+        self.data.B_ddf_des = - self.B_f*self.data.ddf_des
+        self.data.B_df      = - vel
+        (B_df_min, B_df_max) = computeVelViabBounds(pos, pos_min, pos_max, B_ddf_max);
+        self.data.B_df_max  = - B_df_max
+        self.data.B_f       = pos_max - pos
+        
+        DEBUG_VIAB = 0
+        if DEBUG_VIAB:
+            dt = self.dt
+            pos_next = pos + dt*vel + 0.5*dt*dt*self.data.B_ddf_des
+            vel_next = vel + dt*self.data.B_ddf_des
+            max_pos_next = pos + dt*vel + 0.5*dt*dt*B_ddf_UB
+            max_vel_next = vel + dt*B_ddf_UB
+            viabViol = areStatesViable(max_pos_next, max_vel_next, pos_min, pos_max, vel_max, B_ddf_max);
+            if(np.sum(viabViol)>0):
+                print "%.4f ERROR Some constraints will not be viable at next time step"%(t), np.where(viabViol)[0]
+#            if(t>0.16):
+#                print "    %.4f Current    value of B_f "%(t), pos.T
+#                print "    %.4f Future     value of B_f "%(t), pos_next.T
+#                print "    %.4f Max future value of B_f "%(t), max_pos_next.T
+#                print "    %.4f Current    value of B_df"%(t), vel.T                
+#                print "    %.4f Future     value of B_df"%(t), vel_next.T
+#                print "    %.4f Max future value of B_df"%(t), max_vel_next.T
+        
+        if(np.sum(ind)>0):
+            B_ddf_max = np.abs(self.B_f*np.matlib.ones((4,1))*self.ddf_max)
+#            print "%.4f WARNING: increase max constr acc"%(t), np.where(ind)[0], 'from', B_ddf_max[ind].T, 'to', B_ddf_stop[ind].T, \
+#                    'B_f', (pos_max[ind]-pos[ind]).T
+#            print "%.4f WARNING: increase max constr acc"%(t), np.where(ind)[0], 'from', B_ddf_max[ind].T, 'to', B_ddf_stop[ind].T, \
+#                    'B_ddf_UB', B_ddf_UB[ind].T, 'B_ddf_des', self.data.B_ddf_des[ind].T, 'B_df', vel[ind].T, 'B_f', (pos_max[ind]-pos[ind]).T
+#        elif(np.sum(self.ind)>0):
+#            ind = self.ind
+#            print "%.4f DEBUG:              "%(t), np.where(ind)[0], 'B_ddf_max', B_ddf_max[ind].T, 'B_ddf_stop', B_ddf_stop[ind].T, \
+#                    'B_ddf_UB', B_ddf_UB[ind].T, 'B_ddf_des', self.data.B_ddf_des[ind].T, 'B_df', vel[ind].T, 'B_f', (pos_max[ind]-pos[ind]).T
+                    
 
         if w_post == 0 and 0:
             #Test that feet acceleration are satisfied
