@@ -5,6 +5,8 @@ from math import pi,sqrt,cos,sin
 from hrp2_reduced import Hrp2Reduced
 import time 
 from utils.utils_thomas import restert_viewer_server
+from utils.tsid_utils import createContactForceInequalities
+from numpy import matlib
 
 try:
     from IPython import embed
@@ -32,12 +34,16 @@ class Simu:
     def __init__(self,robot,q0=None,dt=1e-3,ndt=10):
         '''
         Initialize from a Hrp2Reduced robot model, an initial configuration,
-        a timestep dt and a number of Eurler integration step ndt.
+        a timestep dt and a number of Euler integration step ndt.
         The <simu> method (later defined) processes <ndt> steps, each of them lasting <dt>/<ndt> seconds,
         (i.e. total integration time when calling simu is <dt> seconds).
         <q0> should be an attribute of robot if it is not given.
         '''
+        self.t = 0.0
         self.first_iter = True
+        self.friction_cones_enabled = False
+        self.left_foot_contact = True
+        self.right_foot_contact = True
         self.tauc = np.array([0.0,0.0,0.0,0.0]) # coulomb stiction 
         self.frf = zero(6)
         self.flf = zero(6)
@@ -53,14 +59,7 @@ class Simu:
         self.LF = robot.model.getFrameId('lankle')
         self.RK = robot.model.frames[self.RF].parent
         self.LK = robot.model.frames[self.LF].parent
-        NQ,NV,NB,RF,LF,RK,LK = self.NQ,self.NV,self.NB,self.RF,self.LF,self.RK,self.LK
-
-        if q0 is None: q0 = robot.q0
-        se3.forwardKinematics(robot.model,robot.data,q0)
-        se3.framesKinematics(robot.model,robot.data)
-
-        self.Mrf0 = robot.data.oMf[RF].copy()  # Initial (i.e. 0-load) position of the R spring.
-        self.Mlf0 = robot.data.oMf[LF].copy()  # Initial (i.e. 0-load) position of the L spring.
+#        NQ,NV,NB,RF,LF,RK,LK = self.NQ,self.NV,self.NB,self.RF,self.LF,self.RK,self.LK
         
         #                      Tx    Ty     Tz      Rx   Ry    RZ
         #Hrp2 6d stiffness : (4034, 23770, 239018, 707, 502, 936)
@@ -70,13 +69,48 @@ class Simu:
         self.Klf = -np.diagflat([23770,239018.,0.])   # Stiffness of the Left  spring
         self.Brf = -np.diagflat([50.,500.,0.])   # damping of the Right spring
         self.Blf = -np.diagflat([50.,500.,0.])   # damping of the Left  spring
-        
+
+        if q0 is None: q0 = robot.q0
+        self.init(q0, reset_contact_positions=True)
         
         if self.useViewer:
             robot.viewer.addXYZaxis('world/mrf',[1.,.6,.6,1.],.03,.1)
             robot.viewer.addXYZaxis('world/mlf',[.6,.6,1.,1.],.03,.1)
             robot.viewer.applyConfiguration('world/mrf',se3ToXYZQUAT(self.Mrf0))
             robot.viewer.applyConfiguration('world/mlf',se3ToXYZQUAT(self.Mlf0))
+    
+    def init(self, q0, v0=None, reset_contact_positions=False):
+        self.q  = q0.copy()
+        if(v0 is None): self.v = zero(self.NV)
+        else:           self.v = v0.copy()
+        self.dv = zero(self.NV)
+
+        # reset contact position    
+        if(reset_contact_positions):  
+            se3.forwardKinematics(self.robot.model, self.robot.data, self.q)
+            se3.framesKinematics(self.robot.model, self.robot.data)
+            self.Mrf0 = self.robot.data.oMf[self.RF].copy()  # Initial (i.e. 0-load) position of the R spring.
+            self.Mlf0 = self.robot.data.oMf[self.LF].copy()  # Initial (i.e. 0-load) position of the L spring.
+        
+        self.compute_f_df_from_q_v(self.q, self.v, compute_data = True)
+        self.com_p, self.com_v, self.com_a, self.com_j = self.robot.get_com_and_derivatives(self.q, self.v, self.f, self.df)
+        self.am, self.dam, self.ddam = self.robot.get_angular_momentum_and_derivatives(self.q, self.v, self.f, self.df, self.Krf[0,0], self.Krf[1,1])
+        self.com_s  = zero(2)        
+        self.acc_lf = zero(3)
+        self.acc_rf = zero(3)
+        self.ddf    = zero(4)
+        
+        
+    def enable_friction_cones(self, mu):
+        self.friction_cones_enabled = True
+        (B, b) = createContactForceInequalities(mu) # B_f * f <= b_f
+        k = B.shape[0]
+        self.B_f = matlib.zeros((2*k,4));
+        self.b_f = matlib.zeros(2*k).T;
+        self.B_f[:k,:2] = B
+        self.B_f[k:,2:] = B
+        self.b_f[:k,0] = b
+        self.b_f[k:,0] = b
 
     def step(self,q,v,tauq,dt = None):
         if dt is None: dt = self.dt
@@ -110,6 +144,7 @@ class Simu:
         q   = se3.integrate(robot.model,q,v_mean*dt)
         self.compute_f_df_from_q_v(q,v, False)
         self.dv = dv
+        self.t += dt
         return q,v
         
     def reset(self):
@@ -135,18 +170,37 @@ class Simu:
         qrf = np.vstack([Mrf.translation[1:],se3.rpy.matrixToRpy(Mrf.rotation)[0]])
         qlf = np.vstack([Mlf.translation[1:],se3.rpy.matrixToRpy(Mlf.rotation)[0]])
 
-        frf = self.frf                                                  # Buffer where to store right force
-        frf[[1,2,3]] = self.Krf*qrf + self.Brf*vrf                      # Right force in effector frame
+        if(qrf[1]>0.0):
+            self.frf = zero(6)
+            self.vrf = zero(3)
+            if(self.right_foot_contact):
+                self.right_foot_contact = False
+                print "\nSIMU INFO %.3f Right foot contact broken!"%(self.t)
+        else:
+            self.frf[[1,2,3]] = self.Krf*qrf + self.Brf*vrf                      # Right force in effector frame            
+            self.vrf = vrf
+            if(not self.right_foot_contact):
+                self.right_foot_contact = True
+                print "\nSIMU INFO %.3f Right foot contact made!"%(self.t)
         #~ rf0_frf = se3.Force(frf)                                        # Force in rf0 frame
         #~ rk_frf  = (robot.data.oMi[RK].inverse()*self.Mrf0).act(rf0_frf) # Spring force in R-knee frame.
-        flf = self.flf                                                  # Buffer where to store left force
-        flf[[1,2,3]] = self.Klf*qlf + self.Blf*vlf                      # Left force in effector frame
+            
+        if(qlf[1]>0.0):
+            self.flf = zero(6)
+            self.vlf = zero(3)
+            if(self.left_foot_contact):
+                self.left_foot_contact = False
+                print "\nSIMU INFO %.3f Left foot contact broken!"%(self.t)
+        else:
+            self.flf[[1,2,3]] = self.Klf*qlf + self.Blf*vlf                      # Left force in effector frame
+            self.vlf = vlf
+            if(not self.left_foot_contact):
+                self.left_foot_contact = True
+                print "\nSIMU INFO %.3f Left foot contact made!"%(self.t)
         #~ lf0_flf = se3.Force(flf)                                        # Force in lf0 frame
         #~ lk_flf  = (robot.data.oMi[LK].inverse()*self.Mlf0).act(lf0_flf) # Spring force in L-knee frame.
 
         #~ self.forces = {RK: rk_frf, LK: lk_flf}
-        self.vlf = vlf
-        self.vrf = vrf
         #~ 
         #~ lkMlf = robot.data.oMi[LK].inverse()*robot.data.oMf[LF]
         #~ rkMrf = robot.data.oMi[RK].inverse()*robot.data.oMf[RF]
@@ -154,6 +208,13 @@ class Simu:
                      #~ rkMrf.actInv(self.forces[RK]).linear[1:]])
         self.f=np.vstack([self.flf[1:3],self.frf[1:3]]) #  forces in the world frame
         self.df=np.vstack([(self.Klf*self.vlf)[0:2],(self.Krf*self.vrf)[0:2]])
+        
+        if(self.friction_cones_enabled):
+            margins = self.B_f * self.f - self.b_f
+            if (margins>0.0).any():
+                ind = np.where(margins>0.0)[0]
+                print "SIMU WARNING: friction cone violations: ", ind, margins[ind].T
+
         return self.f,self.df
         
     def simu(self,q,v,tau):
@@ -162,23 +223,28 @@ class Simu:
         # compute df based on current contact point velocities
         df_0 = np.vstack([(self.Klf*self.vlf)[0:2],(self.Krf*self.vrf)[0:2]])
         com_p_0, com_v_0, com_a_0, com_j_0 = self.robot.get_com_and_derivatives(q, v, self.f, df_0)
-        f_0 = self.f.copy()
-        
+#        f_0 = self.f.copy()
+        self.q = q.copy()
+        self.v = v.copy()
         for i in range(self.ndt):
-            q,v = self.step(q,v,tau,self.dt/self.ndt)
+            self.q, self.v = self.step(self.q, self.v, tau, self.dt/self.ndt)
             
         # compute average acc values during simulation time step
         self.acc_lf = (self.vlf - vlf_0)/self.dt
         self.acc_rf = (self.vrf - vrf_0)/self.dt
-        self.df     = (self.f - f_0)/self.dt    # this df is the average over the time step
+#        self.df     = (self.f - f_0)/self.dt    # this df is the average over the time step
+        
         df_end = np.vstack([(self.Klf*self.vlf)[0:2],(self.Krf*self.vrf)[0:2]])
-        self.com_p, self.com_v, com_a, com_j = self.robot.get_com_and_derivatives(q, v, self.f, df_end)
+        self.df = df_end
+        self.ddf    = (df_end-df_0)/self.dt    # this ddf is the average over the time step
+        
+        self.com_p, self.com_v, com_a, com_j = self.robot.get_com_and_derivatives(self.q, self.v, self.f, df_end)
         self.com_a = (self.com_v - com_v_0)/self.dt
         self.com_j = (com_a - com_a_0)/self.dt
         self.com_s = (com_j - com_j_0)/self.dt
-        self.am, self.dam, self.ddam = self.robot.get_angular_momentum_and_derivatives(q, v, self.f, self.df, self.Krf[0,0], self.Krf[1,1])
+        self.am, self.dam, self.ddam = self.robot.get_angular_momentum_and_derivatives(self.q, self.v, self.f, self.df, self.Krf[0,0], self.Krf[1,1])
         
-        return q,v,self.f,self.df
+        return self.q, self.v, self.f, self.df
 
     __call__ = simu
 
