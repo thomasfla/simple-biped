@@ -14,9 +14,10 @@ import utils.plot_utils as plut
 from utils.plot_utils import plot_from_logger
 from tsid import Tsid
 from tsid_admittance import TsidAdmittance
+from admittance_ctrl import AdmittanceControl
 from tsid_flexible_contacts import TsidFlexibleContact
 from tsid_mistry import TsidMistry
-from path import pkg, urdf 
+from robot_model_path import pkg, urdf 
 from utils.noise_utils import NoisyState
 from estimation.momentumEKF import MomentumEKF
 import getopt, sys, os, datetime
@@ -26,7 +27,7 @@ try:
 except ImportError:
     pass
 
-useViewer = False
+useViewer = 0
 np.set_printoptions(precision=3, linewidth=200)
 
 if useViewer:
@@ -49,29 +50,36 @@ def com_traj(t, c_init, c_final, T):
     return (np.matrix([[py ],[pz]]), np.matrix([[vy ],[vz]]), 
             np.matrix([[ay ],[az]]), np.matrix([[jy ],[jz]]), np.matrix([[sy ],[sz]]))
     
-CONTROLLER = 'tsid_flex'             # either 'tsid_rigid' or 'tsid_flex' or 'tsid_adm' or 'tsid_mistry'
-F_DISTURB = np.matrix([0e2, 0, 0]).T
-COM_SIN_AMP = np.array([0.03, 0.0])
-ZETA = .2   # with zeta=0.03 and ndt=100 it is unstable
-tauc = 0*3.0*np.array([1.,1.,1.,1.])#coulomb friction
+CONTROLLER = 'adm_ctrl'             # either 'tsid_rigid' or 'tsid_flex' or 'tsid_adm' or 'tsid_mistry' or 'adm_ctrl'
+F_DISTURB = np.matrix([4e2, 0, 0]).T
+COM_SIN_AMP = np.array([0.0, 0.0])
+ZETA = .3   # with zeta=0.03 and ndt=100 it is unstable
+mu_simu = 0.3    # contact force friction coefficient
+mu_ctrl = 0.3    # contact force friction coefficient
+fMin = 10.0
+tauc = 0.*np.array([1.,1.,1.,1.])    # coulomb friction
 
 PLOT_FORCES                         = 1
+PLOT_FORCE_VEL                      = 0
+PLOT_FORCE_ACC                      = 0
 PLOT_COM_ESTIMATION                 = 1
 PLOT_COM_TRACKING                   = 1
-PLOT_CONTACT_POINT_ACC              = 1
-PLOT_ANGULAR_MOMENTUM_DERIVATIVES   = 1
-PLOT_JOINT_TORQUES                  = 1
-plut.SAVE_FIGURES                   = 0
-SAVE_DATA                           = 0
-SHOW_FIGURES                        = 1
+PLOT_COM_SNAP                       = 0
+PLOT_CONTACT_POINT_ACC              = 0
+PLOT_ANGULAR_MOMENTUM_DERIVATIVES   = 0
+PLOT_JOINT_TORQUES                  = 0
+PLOT_JOINT_ANGLES                   = 0
+plut.SAVE_FIGURES                   = 1
+SAVE_DATA                           = 1
+SHOW_FIGURES                        = 0
 
 #Simulation parameters
 dt  = 1e-3
-ndt = 30
-simulation_time = 2.0
-USE_ESTIMATOR = 1              # use real state for controller feedback
-T_DISTURB_BEGIN = 0.20          # Time at which the disturbance starts
-T_DISTURB_END   = 0.21          # Time at which the disturbance ends
+ndt = 10
+simulation_time = 1.5
+USE_ESTIMATOR = 0              # use real state for controller feedback
+T_DISTURB_BEGIN = 0.10          # Time at which the disturbance starts
+T_DISTURB_END   = 0.11          # Time at which the disturbance ends
 
 INPUT_PARAMS = ['controller=', 'com_sin_amp=', 'f_dist=', 'zeta=', 'use_estimator=', 'T=']
 try:
@@ -118,7 +126,11 @@ if(SAVE_DATA):
 #    RESULTS_PATH = os.getcwd()+'/data/'+date_time+'_'+TEST_DESCR_STR+'/'
     RESULTS_PATH = os.getcwd()+'/data/'+TEST_DESCR_STR+'/'
     print "Gonna save results in folder:", RESULTS_PATH
-    os.makedirs(RESULTS_PATH);
+    try:
+        os.makedirs(RESULTS_PATH);
+    except OSError:
+        print "Directory already exists."
+        raw_input("Are you sure that you want to continue? ")
     plut.FIGURE_PATH = RESULTS_PATH
 
 #TEST_DESCR_STR = '_'+TEST_DESCR_STR
@@ -143,16 +155,18 @@ simu = Simu(robot,dt=dt,ndt=ndt)
 simu.tauc = tauc
 simu.Krf, simu.Klf = Kspring, Kspring
 simu.Brf, simu.Blf = Bspring, Bspring
+simu.enable_friction_cones(mu_simu)
 
 #initial state
 q0 = robot.q0.copy()
 v0 = zero(robot.model.nv)
 g_vec = robot.model.gravity.linear[1:].A1            # gravity acc vector
 g = np.linalg.norm(g_vec)                            # gravity acceleration
-se3.computeAllTerms(robot.model,robot.data,q0,v0)
+#se3.computeAllTerms(robot.model,robot.data,q0,v0)
 m = robot.data.mass[0] 
 q0[1]-=0.5*m*g/Kz
-f0,df0 = simu.compute_f_df_from_q_v(q0,v0)
+simu.init(q0)
+f0,df0 = simu.f, simu.df #compute_f_df_from_q_v(q0,v0)
 c0,dc0,ddc0,dddc0 = robot.get_com_and_derivatives(q0,v0,f0,df0)
 l0 = 0
 
@@ -166,6 +180,8 @@ ns = NoisyState(dt,robot,Ky,Kz)
 n_x, n_u, n_y = 9+4, 4, 9
 sigma_x_0 = 1e-2                    # initial state estimate std dev
 sigma_ddf   = 1e2*np.ones(4)          # control (i.e. force accelerations) noise std dev used in EKF
+if(CONTROLLER=='tsid_adm'):
+    sigma_ddf   = 1e4*np.ones(4)          # control (i.e. force accelerations) noise std dev used in EKF
 sigma_f     = np.array([ns.std_fy, ns.std_fz, ns.std_fy, ns.std_fz])  # force measurement noise std dev
 sigma_f_dist = 1e1*np.ones(2)          # external force noise std dev used in EKF
 sigma_c  = 1e-3*np.ones(2)             # CoM position measurement noise std dev
@@ -182,6 +198,7 @@ Kp_com = 50.0                  # com proportional feedback gain
 Kd_com = 2*sqrt(Kp_com)         # com derivative feedback gain
 if(CONTROLLER=='tsid_flex'):
     w_post  = 0.3
+    ddf_max = 2e4 #4e5 #Kz
 #    (Kp_com, Kd_com, Ka_com, Kj_com) = (10611.05989124,  4182.20596787,   618.10999684,    40.5999999)     # poles [-10.3 -10.2 -10.1  -10.]
 #    (Kp_com, Kd_com, Ka_com, Kj_com) = (52674.83686644, 13908.30537877,  1377.10995895, 60.5999991) # poles [-15.30235117 -15.19247204 -15.10739361 -14.99778229]
 #    (Kp_com, Kd_com, Ka_com, Kj_com) = (1.64844157e+05, 3.27244115e+04, 2.43611027e+03, 8.06000045e+01) # ploes [-20.29999909 -20.20000804 -20.09999556 -20.00000185]
@@ -189,7 +206,7 @@ if(CONTROLLER=='tsid_flex'):
 #    (Kp_com, Kd_com, Ka_com, Kj_com) = (2.28323600e+05, 4.76834812e+04, 3.35391925e+03, 9.68316039e+01) # poles 10, 20, 30, 40
 #    (Kp_com, Kd_com, Ka_com, Kj_com) = (7.78064620e+05, 1.03624061e+05, 5.18844741e+03, 1.16188573e+02) # poles -30
 #    (Kp_com, Kd_com, Ka_com, Kj_com) = (1.20e+06, 1.54e+05, 7.10e+03, 1.40e+02) # poles [-50. -40. -30. -20.]
-    tsid = TsidFlexibleContact(robot, Ky, Kz, w_post, Kp_post, Kp_com, Kd_com, Ka_com, Kj_com, centroidalEstimator)
+    tsid = TsidFlexibleContact(robot, Ky, Kz, w_post, Kp_post, Kp_com, Kd_com, Ka_com, Kj_com, fMin, mu_ctrl, ddf_max, dt, centroidalEstimator)
 elif(CONTROLLER=='tsid_rigid'):
     w_post  = 1e-2                  # postural task weight
     w_force = 1e-4
@@ -200,7 +217,32 @@ elif(CONTROLLER=='tsid_adm'):
 #    Kp_adm, Kd_adm, Kp_com, Kd_com = 1038.29702511, 77.9184247381, 60.731488824, 20.3902792501  # poles 5, 15, 25, 35
 #    Kp_adm, Kd_adm, Kp_com, Kd_com, Kf = 188.781277292, 77.9184247381, 33.4023188532, 11.2146535876, 10*Kf # poles 5, 15, 25, 35
     Kp_adm, Kd_adm, Kp_com, Kd_com, Kf = 20.5603371308, 77.9184247381, 30.6694018561, 10.2970910213, 100*Kf # poles 5, 15, 25, 35
-    tsid = TsidAdmittance(robot, Ky, Kz, w_post, Kp_post, Kp_com, Kf, Kp_adm, Kd_adm, centroidalEstimator)
+    tsid = TsidAdmittance(robot, Ky, Kz, w_post, Kp_post, Kp_com, Kf, Kp_adm, Kd_adm, fMin, mu_ctrl, centroidalEstimator)
+elif(CONTROLLER=='adm_ctrl'):
+    Kp_adm =  20.595206116527326
+    Kd_adm =  77.30991409334763
+    Kp_com =  21.10436997498271
+    Kd_com =  8.23474242150766
+    kp_bar =  16600.214218073572
+    kd_bar =  399.95938376411885
+    Kf = 1e-4*np.diag( [20.251365813877367, 10.458093022034928, 20.37570634792638, 9.813268738594545] )
+    
+#    Kp_adm =  22.9537359909956
+#    Kd_adm =  80.68185112673666
+#    Kp_com =  7.935731615521004
+#    Kd_com =  4.890811951197692
+#    kp_bar =  2524.8566339854556
+#    kd_bar =  413.7819220911169
+#    Kf = 1e-4*np.diag( [52.616998824211024, 33.49085603335332, 42.08732247994318, 33.44972673926459] )
+    
+    Mj_diag = np.matrix(np.diag(np.diag(robot.data.M[3:,3:])))
+    Kp_pos = kp_bar*Mj_diag
+    Kd_pos = kd_bar*Mj_diag
+
+    tau_0 = np.matrix([-2.590388574401987, -214.40477481684383, 2.570829716838424, -214.5015213169777]).T
+    q_cmd = q0.copy()
+    q_cmd[4:,0] += np.matrix(np.divide(tau_0.A1, np.diag(Kp_pos))).T
+    tsid = AdmittanceControl(robot, dt, q_cmd, Ky, Kz, w_post, Kp_post, Kp_com, Kf, Kp_adm, Kd_adm, Kp_pos, Kd_pos, fMin, mu_ctrl, centroidalEstimator)
 elif(CONTROLLER=='tsid_mistry'):
     w_post  = 1e-3                  # postural task weight
     tsid = TsidMistry(robot, Ky, Kz, By, Bz, w_post, Kp_post, Kp_com, Kd_com, dt, centroidalEstimator)
@@ -218,7 +260,10 @@ vc, vr = 'vector', 'variable'
 tsid_var_names  = ['dv', 'tau', 'com_p_mes', 'com_v_mes', 'com_p_est', 'com_v_est', 'comref']
 tsid_var_types  = 7*[vc,]
 
-if CONTROLLER=='tsid_rigid' or CONTROLLER=='tsid_adm':
+if CONTROLLER=='adm_ctrl':
+    tsid_var_names  += ['q_cmd']
+    tsid_var_types  += 1*[vc,]
+if CONTROLLER=='tsid_rigid' or CONTROLLER=='tsid_adm' or CONTROLLER=='adm_ctrl':
     tsid_var_names  += ['lkf', 'rkf']
     tsid_var_types  += 2*[vc,]
 if CONTROLLER=='tsid_mistry':
@@ -231,14 +276,16 @@ if CONTROLLER=='tsid_flex':
     #Integral of angular momentum approximated by base orientation, angular momentum, its 1st and 2nd derivative, its desired 3rd derivative
     tsid_var_names += ['iam', 'dddam_des', 'robotInertia']
     tsid_var_types += 3*[vr,]
-    tsid_var_names += ['com_a_mes', 'com_a_est', 'com_j_est', 'com_s_des', 'com_s_exp']
-    tsid_var_types += 5*[vc,]
+    tsid_var_names += ['com_a_mes', 'com_a_est', 'com_j_est', 'com_s_des', 'com_s_exp', 'ddf_des']
+    tsid_var_types += 6*[vc,]
+    tsid_var_names += ['B_ddf_max', 'B_ddf_des', 'B_ddf_UB', 'B_df', 'B_f', 'B_df_max']
+    tsid_var_types += 6*[vc,]
 else:
     tsid_var_names += ['com_a_des']
     tsid_var_types += [vc]
 lgr.auto_log_variables(tsid.data, tsid_var_names, tsid_var_types, 'tsid')
 
-lgr.auto_log_variables(simu, ['dv', 'com_p', 'com_v', 'com_a', 'com_j', 'com_s', 'vlf', 'vrf', 'acc_lf', 'acc_rf', 'df'], 11*[vc,], 'simu')
+lgr.auto_log_variables(simu, ['q', 'v', 'dv', 'com_p', 'com_v', 'com_a', 'com_j', 'com_s', 'vlf', 'vrf', 'acc_lf', 'acc_rf', 'df', 'ddf'], 14*[vc,], 'simu')
 lgr.auto_log_variables(simu, ['am', 'dam', 'ddam'], 3*[vr,], 'simu')
 lgr.auto_log_variables(simu, ['f'], [vc], log_var_names=[['simu_'+s for s in ['lkf_0', 'lkf_1', 'rkf_0', 'rkf_1']]])
 
@@ -263,11 +310,12 @@ def loop(q, v, f, df, niter, ndt=None, dt=None, tsleep=.9, fdisplay=100):
         
         # simulate the system
         u = controller(t, q_noisy, v_noisy, f_noisy, df_noisy)
-        q,v,f,df = simu(q,v,u)
         
         # log data        
         log_t[i] = t  
         lgr.log_all(locals())
+        
+        q,v,f,df = simu(q,v,u)
         
         if not i%100 :
             print "t:%.1f \t com err %.3f\t ang-mom %.1f\t tau norm %.0f" % (t, norm(tsid.data.com_p_err), simu.am, norm(tsid.data.tau))
@@ -301,9 +349,17 @@ if PLOT_FORCES:
     fields += [['simu_lkf_1',          'tsid_lkf_1',     'simu_rkf_1',          'tsid_rkf_1']]
     labels += [['left',                'left des',       'right',               'right des']]
     linest += [['b', '--', 'r', '--']]
-    plot_from_logger(lgr, dt, fields, labels, 'Contact Forces', linest, ylabel=['Y [N]', 'Z [N]'])
+    ax = plot_from_logger(lgr, dt, fields, labels, 'Contact Forces', linest, ylabel=['Y [N]', 'Z [N]'])
+
+    tt = np.arange(0.0, dt*log_size, dt)
+    ax[0].plot(tt,  mu_simu*np.array(lgr.simu_lkf_1), 'b:', label='left bounds')
+    ax[0].plot(tt, -mu_simu*np.array(lgr.simu_lkf_1), 'b:') #, label='left min')
+    ax[0].plot(tt,  mu_simu*np.array(lgr.simu_rkf_1), 'r:', label='right bounds')
+    ax[0].plot(tt, -mu_simu*np.array(lgr.simu_rkf_1), 'r:') #, label='right min')
+    ax[0].legend()
     plut.saveFigure('contact_forces'+TEST_DESCR_STR)
 
+if(PLOT_FORCES and USE_ESTIMATOR):
     fields, labels, linest = [], [], []
     fields += [['simu_lkf_0',   'ekf_f_0',    'simu_rkf_0',   'ekf_f_2'  ]]
     labels += [['left',         'ekf left',   'right',        'ekf right']]
@@ -314,7 +370,65 @@ if PLOT_FORCES:
     plot_from_logger(lgr, dt, fields, labels, 'Contact Forces', linest, ylabel=['Y [N]', 'Z [N]'])
     plut.saveFigure('contact_forces_est'+TEST_DESCR_STR)
 
+if PLOT_FORCE_VEL:
+    plot_from_logger(lgr, dt, [['simu_df_'+str(i) for i in range(j,4,2)] for j in range(2)], 
+                     [['left', 'right']]*2, 'Force velocity', ylabel=['Y [N/s]', 'Z [N/s]'])
+    plut.saveFigure('df'+TEST_DESCR_STR)
 
+if PLOT_FORCE_ACC:
+    for i in range(4):
+#        tmp = finite_diff(lgr.get_streams('simu_df_'+str(i)), dt)
+#        lgr.add_stream(tmp, 'simu_ddf_fd_'+str(i))        
+
+        print "Max ddf", i, np.max(np.array(lgr.get_streams('simu_ddf_'+str(i))))
+        
+#        plot_ddf_err = True
+#        try:        
+#            ddf_err = np.array(lgr.get_streams('simu_ddf_'+str(i))) - np.array(lgr.get_streams('tsid_ddf_des_'+str(i)))
+#            ddf_err[int(T_DISTURB_BEGIN/dt):int(T_DISTURB_END/dt)] = 0.0
+#            lgr.add_stream(ddf_err, 'tsid_ddf_err_'+str(i))
+#        except:
+#            plot_ddf_err = False
+        
+#    fields = [['simu_ddf_'+str(i) for i in range(j,4,2)]+['tsid_ddf_des_'+str(i) for i in range(j,4,2)]+['simu_ddf_fd_'+str(i) for i in range(j,4,2)] for j in range(2)]
+#    plot_from_logger(lgr, dt, fields, [['left', 'right', 'left des', 'right des', 'left fd', 'right fd'], None], 
+#                     'Force acceleration', [['b', 'r', '--', '--']]*2, ylabel=['Y [N/s^2]', 'Z [N/s^2]'])
+#    plut.saveFigure('ddf'+TEST_DESCR_STR)
+#    
+#    plot_from_logger(lgr, dt, [['tsid_B_ddf_max_'+str(j), 'tsid_B_ddf_UB_'+str(j), 'tsid_B_ddf_des_'+str(j)] for j in range(4)], 
+#                     [['max', 'UB', 'des'], None, None, None], 'Force constraint acceleration', 
+#                     [['b', ':', '--']]*4, ylabel=['0', '1', '2', '3'], ncols=2)
+    
+#    if(plot_ddf_err):
+#        plot_from_logger(lgr, dt, [['tsid_ddf_err_'+str(i)] for i in range(4)], 
+#                         [['ddf err'], None, None, None], 'Force acc err', 
+#                         [['b']]*4, ylabel=['0', '1', '2', '3'], ncols=2)
+
+    try:                     
+        for i in range(4):
+            tmp = finite_diff(lgr.get_streams('tsid_B_df_'+str(i)), dt)
+            lgr.add_stream(tmp, 'tsid_B_ddf_fd_'+str(i))
+            B_ddf_err = tmp-np.array(lgr.get_streams('tsid_B_ddf_des_'+str(i)))
+            B_ddf_err[int(T_DISTURB_BEGIN/dt):int(T_DISTURB_END/dt)] = 0.0
+            lgr.add_stream(B_ddf_err, 'tsid_B_ddf_err_'+str(i))
+        
+        plot_from_logger(lgr, dt, [['tsid_B_ddf_fd_'+str(i), 'tsid_B_ddf_des_'+str(i)] for i in range(4)], 
+                         [['fd', 'des'], None, None, None], 'Force constraint acceleration', 
+                         [['b', '--']]*4, ylabel=['0', '1', '2', '3'], ncols=2)
+        
+        plot_from_logger(lgr, dt, [['tsid_B_ddf_err_'+str(i)] for i in range(4)], 
+                         [['B*ddf err'], None, None, None], 'Force constraint acc err', 
+                         [['b']]*4, ylabel=['0', '1', '2', '3'], ncols=2)
+                         
+        for i in range(4):
+            fields = [['tsid_B_f_'+str(i)], ['tsid_B_df_'+str(i), 'tsid_B_df_max_'+str(i)], ['tsid_B_ddf_max_'+str(i), 'tsid_B_ddf_UB_'+str(i), 'tsid_B_ddf_des_'+str(i)]]
+            ax = plot_from_logger(lgr, dt, fields, [['pos'], ['vel', 'vel UB'], ['max', 'UB', 'acc']], 'Force constraint '+str(i), 
+                                  [['-'], ['-', '--'], ['-', ':', '--']], yscale=['log','linear','linear'])
+            ax[-1].set_ylim(np.min(lgr.get_streams('tsid_B_ddf_des_'+str(i))), np.max(lgr.get_streams('tsid_B_ddf_des_'+str(i))))
+    except:
+        pass
+        
+    
 if PLOT_CONTACT_POINT_ACC:
     ax_lbl = {0:'Y', 1:'Z'}
     f_names = ['simu_acc_lf_', 'simu_acc_rf_', 'tsid_lf_a_des_', 'tsid_rf_a_des_']
@@ -334,8 +448,10 @@ if PLOT_COM_TRACKING :
         fields += [['simu_com_v_'+str(i) ]] + [['simu_com_a_'+str(i), 'tsid_com_a_des_'+str(i)]] + [['simu_com_j_'+str(i) ]]
         labels += [['real'               ]] + [['real',               'desired'               ]] + [['real'               ]]
         linest += [[None                 ]] + [[None,                 '--'                    ]] + [[None                 ]]
-        ylabels = [s+' '+um for (s,um) in zip(['Pos.', 'Vel.', 'Acc.', 'Jerk'], ['[m]', '[m/s]', '[m/s^2]', '[m/s^3]'])]
-        plot_from_logger(lgr, dt, fields, labels, titles='Center of Mass '+ax_lbl[i], linestyles=linest, ylabel=ylabels)
+#        ylabels = [s+' '+um for (s,um) in zip(['Pos.', 'Vel.', 'Acc.', 'Jerk'], ['[m]', '[m/s]', '[m/s^2]', '[m/s^3]'])]
+        ylabels = ['[m]', '[m/s]', '[m/s^2]', '[m/s^3]']
+        titles  = ['Center of Mass '+ax_lbl[i]+' Pos.', 'Vel.', 'Acc.', 'Jerk']
+        plot_from_logger(lgr, dt, fields, labels, titles=titles, linestyles=linest, ylabel=ylabels)
         plut.saveFigure('com_tracking_'+ax_lbl[i]+TEST_DESCR_STR)
 
 if PLOT_COM_ESTIMATION and USE_ESTIMATOR:
@@ -354,7 +470,7 @@ if PLOT_COM_ESTIMATION and USE_ESTIMATOR:
 if CONTROLLER=='tsid_mistry':
     plot_from_logger(lgr, dt, [['tsid_com_j_des_'+str(i), 'tsid_com_j_exp_'+str(i), 'simu_com_j_'+str(i)] for i in range(1)], linestyles=[[None,'--',':']]*2)    
     plot_from_logger(lgr, dt, [['tsid_df_des_'+str(i), 'simu_df_'+str(i)] for i in range(4)], linestyles=[[None,'--']]*4, ncols=2)
-elif CONTROLLER=='tsid_flex':
+elif CONTROLLER=='tsid_flex' and PLOT_COM_SNAP:
     plot_from_logger(lgr, dt, [['tsid_com_s_des_'+str(i), 'tsid_com_s_exp_'+str(i), 'simu_com_s_'+str(i)] for i in range(2)], linestyles=[[None,'--',':']]*2)
     
 if PLOT_ANGULAR_MOMENTUM_DERIVATIVES:
@@ -364,6 +480,12 @@ if PLOT_ANGULAR_MOMENTUM_DERIVATIVES:
 if(PLOT_JOINT_TORQUES):
     plot_from_logger(lgr, dt, [['tsid_tau_'+str(i) for i in range(4)]], [['right hip', 'right knee', 'left hip', 'left knee']], ylabel='Joint Generalized Force [N]/[Nm]')
     plut.saveFigure('joint_torques'+TEST_DESCR_STR)
+   
+if(PLOT_JOINT_ANGLES):
+    plot_from_logger(lgr, dt, [['simu_q_'+str(i), 'tsid_q_cmd_'+str(i-4)] for i in range(4,8)], [['q', 'q_cmd']]*4,
+                          titles=['right hip', 'right knee', 'left hip', 'left knee'], 
+                          linestyles=[['-', '--']]*4, ncols=2, ylabel='Joint Angles [rad]]')
+    plut.saveFigure('joint_angles'+TEST_DESCR_STR)
     
 if(SAVE_DATA):
     lgr.dump_compressed(RESULTS_PATH+'logger_data')
