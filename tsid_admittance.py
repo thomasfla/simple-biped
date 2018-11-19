@@ -4,6 +4,7 @@ from math import pi,sqrt,cos,sin
 from quadprog import solve_qp
 import numpy as np
 from numpy import matlib
+from utils.tsid_utils import createContactForceInequalities
 
 try:
     from IPython import embed
@@ -16,8 +17,9 @@ class Empty:
 class TsidAdmittance:
     
     HESSIAN_REGULARIZATION = 1e-8
+    NEGLECT_FRICTION_CONES = False
     
-    def __init__(self, robot, Ky, Kz, w_post, Kp_post, Kp_com, Kf, Kp_adm=400.0, Kd_adm=40.0, estimator=None):
+    def __init__(self, robot, Ky, Kz, w_post, Kp_post, Kp_com, Kf, Kp_adm=400.0, Kd_adm=40.0, fMin=0.0, mu=0.3, estimator=None):
         self.robot = robot
         self.estimator = estimator
         self.NQ = robot.model.nq
@@ -35,6 +37,8 @@ class TsidAdmittance:
         self.Kf = Kf #-self.Kinv
         self.Kp_adm = Kp_adm
         self.Kd_adm = Kd_adm
+        self.fMin = fMin
+        self.mu = mu
         
         self.w_post = w_post
         self.Kp_post = Kp_post
@@ -54,13 +58,6 @@ class TsidAdmittance:
         self.X_com = np.hstack([np.eye(2),np.eye(2)])
         self.p_0 = -self.Kinv*np.linalg.pinv(self.X_com)*self.m*self.g
         
-        # DEBUG
-#        self.f_est_err_max = matlib.zeros(4).T
-        
-    def setGains(self,P,V=None):
-        if V is None: 
-            V=2*sqrt(P)
-        self.P,self.V = P,V
             
     def solve(self, t, q, v, f_meas, df_meas=None):
         robot=self.robot
@@ -96,7 +93,9 @@ class TsidAdmittance:
 #                if(f_est_err[i,0]>self.f_est_err_max[i,0]):
 #                    self.f_est_err_max[i,0] = f_est_err[i,0]
 #                    print "Time %.3f   Max force est err %d: %.1f (%.1f)" % (t, i, f_est_err[i,0], 1e2*f_est_err[i,0]/f_meas[i,0])
-#            f_est = f_meas
+            
+            # use the measurements for the contact forces and the CoM position
+#            com_est, f_est, df_est = com_mes, f_meas, df_meas
         
         # Formulate contact and dynamic constrains *********************
         #        7    4     4       7  4  4
@@ -138,6 +137,7 @@ class TsidAdmittance:
                          np.hstack([np.zeros([4,7]) ,np.eye(4),np.zeros([4,4])])])
         # Here it works better to use the measured forces rather than the estimated ones
         bec = np.vstack([-h, f_meas]) #f_est])
+#        bec = np.vstack([-h, f_est])
         
         feet_p = self.Kinv*f_est    # the minus sign is already included in Kinv
         feet_v = self.Kinv*df_est
@@ -166,8 +166,28 @@ class TsidAdmittance:
                 
         #com + am
         X = np.vstack([self.X_com, X_am])
-        X_pinv = np.linalg.pinv(X)
-        f_des = X_pinv*np.vstack([m*(com_a_des-g), dam_des])
+        ddx_des = np.vstack([m*(com_a_des-g), dam_des])
+        if(self.NEGLECT_FRICTION_CONES):
+            X_pinv = np.linalg.pinv(X)
+            f_des = X_pinv*ddx_des
+        else:
+            # Friction cone inequality constraints Aic * x >= bic
+            if(self.fMin==0.0): k = 2
+            else:               k = 3
+            B_f = matlib.zeros((2*k,4));
+            b_f = matlib.zeros(B_f.shape[0]).T;
+            (B_f[:k,:2], b_f[:k,0]) = createContactForceInequalities(self.mu, self.fMin) # B_f * f <= b_f
+            (B_f[k:,2:], b_f[k:,0]) = createContactForceInequalities(self.mu, self.fMin)
+            
+            H=(X.T*X).T + self.HESSIAN_REGULARIZATION*np.eye(X.shape[1])
+            g=(X.T*ddx_des).T
+            f_des = np.matrix(solve_qp(H.A, g.A1, -B_f.T.A, -b_f.A1, 0)[0]).T
+            
+            # compute active inequalities
+            margins = -B_f*f_des + b_f
+#            if (margins<=1e-5).any():
+#                print "%.3f Active inequalities:"%(t), np.where(margins<=1e-5)[0] #margins.T
+#                print "f_des", f_des.T
 
         feet_p_des = self.p_0 - self.Kf*(f_des - f_est)
         feet_a_des = self.Kp_adm * (feet_p_des - feet_p) - self.Kd_adm * feet_v
@@ -193,8 +213,8 @@ class TsidAdmittance:
         b=np.vstack([b_admcom,b_post])
         
         #stack equality and inequality constrains
-        #~ Ac = np.vstack([Aec,Aic])
-        #~ bc = np.vstack([bec,bic])
+#        Ac = np.vstack([Aec,Aic])
+#        bc = np.vstack([bec,bic])
         Ac=Aec
         bc=bec
         
