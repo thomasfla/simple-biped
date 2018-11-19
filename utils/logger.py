@@ -2,6 +2,7 @@
 # This class is used to log quantities evolution 
 import numpy as np   
 from RAI.data_collector import DataCollector
+from copy import deepcopy
 
 try:
     from IPython import embed
@@ -237,6 +238,57 @@ class RaiLogger(DataCollector):
             self.units[field] = unit
 
         assert len(self.data) == len(self.fields) == len(self.units)
+        
+    def get_vector(self, field, size, as_numpy_matrix=True):
+        ''' Return a list of lists containing all the values of the specified vector field
+            :param field The name of the vector field
+            :param size  The length of the vector
+        '''
+        N = len(self.data[0])
+        if(as_numpy_matrix):
+            res = np.empty((size,N))
+        else:
+            res = []
+
+        for i in range(size):
+            if(not as_numpy_matrix):
+                res.append(self.data[self.fields[field+'_'+str(i)]])
+            else:
+                for t in range(N):
+                    res[i,t] = self.data[self.fields[field+'_'+str(i)]][t]
+        
+        if(as_numpy_matrix):
+            return np.asmatrix(res)
+        return res
+            
+        
+    def _parse_npz_file(self, file_dictionary):
+        """
+        Modified version of _parse_npz_file of DataCollector class.
+        The two differences are that the prefix 'data/' is no longer
+        added to the field names, and that the field 'time' is not
+        required anymore.
+        """
+
+        self.fields = {}
+        self.units = {}
+        self.data = []
+        # deal with all the data from the different files
+        id = 0
+        for filezip in file_dictionary:
+            data_dictionary = file_dictionary[filezip].all()
+            # first deal with the frequency
+            self.metadata[filezip] = {}
+            # copy the metadata separately for each file
+            self.metadata[filezip] = deepcopy(data_dictionary['metadata'])
+            # accumulate the data changing the field of the fields
+            for i, field in enumerate(data_dictionary['fields']):
+                self.fields[str(field)] = id + i
+                self.units[str(field)] = (
+                    data_dictionary['units'][field])
+                self.data += [data_dictionary["data"][
+                                  data_dictionary["fields"][field]]]
+            id += len(data_dictionary['fields'])
 
 
 def exampleSimpleArrayLogger():    
