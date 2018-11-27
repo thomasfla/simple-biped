@@ -15,25 +15,32 @@ def restert_viewer_server(procName='gepetto-gui', delay = 0.2):
     sleep(delay)
 
 
+def rmse(x):
+    ''' Given an NxP matrix representing a trajectory, where N is the number of time steps
+        and P is the size of the quantity, it computes the RMSE of the trajectory
+    '''
+    return np.sqrt(np.sum(np.asarray(x)**2))
+    
 def traj_norm(x):
     ''' Given an NxP matrix representing a trajectory, where N is the number of time steps
         and P is the size of the quantity, it computes the norm of the trajectory at each 
         point in time.
     '''
-    return np.sqrt(x.shape[1]*np.mean(x**2, axis=1))
+    return np.sqrt(x.shape[1]*np.mean(np.asarray(x)**2, axis=1))
 #    N = err.shape[0]
 #    err_norm = np.empty(N)
 #    for i in range(N):
 #        err_norm[i] = np.linalg.norm(err[i,:])
 #    return err_norm
     
-def finite_diff(data, dt):
+def finite_diff(data, dt, set_last_element_to_nan=True):
     fd = np.asarray(data).copy()
 #    fd[0] = 0.
 #    fd[1:,] -= np.asarray(data[:-1])
     fd[:-1,] = fd[1:,] - np.asarray(data[:-1])
     fd = fd *(1/dt)
-    fd[-1] = np.nan # just ignore the last points for display
+    if(set_last_element_to_nan):
+        fd[-1] = np.nan # just ignore the last points for display
     return fd
     
 
