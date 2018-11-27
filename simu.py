@@ -7,6 +7,7 @@ import time
 from utils.utils_thomas import restert_viewer_server
 from utils.tsid_utils import createContactForceInequalities
 from numpy import matlib
+from numpy.linalg import norm
 
 try:
     from IPython import embed
@@ -42,6 +43,8 @@ class Simu:
         self.t = 0.0
         self.first_iter = True
         self.friction_cones_enabled = False
+        self.friction_cones_max_violation = 0.0
+        self.friction_cones_violated = False
         self.left_foot_contact = True
         self.right_foot_contact = True
         self.tauc = np.array([0.0,0.0,0.0,0.0]) # coulomb stiction 
@@ -88,7 +91,7 @@ class Simu:
         # reset contact position    
         if(reset_contact_positions):  
             se3.forwardKinematics(self.robot.model, self.robot.data, self.q)
-            se3.framesKinematics(self.robot.model, self.robot.data)
+            se3.updateFramePlacements(self.robot.model, self.robot.data)
             self.Mrf0 = self.robot.data.oMf[self.RF].copy()  # Initial (i.e. 0-load) position of the R spring.
             self.Mlf0 = self.robot.data.oMf[self.LF].copy()  # Initial (i.e. 0-load) position of the L spring.
         
@@ -132,8 +135,8 @@ class Simu:
         #~ #simulazione mano! (Forces are directly in the world frame, and aba wants them in the end effector frame)
         se3.forwardKinematics(robot.model,robot.data,q,v)
         se3.computeAllTerms(robot.model,robot.data,q,v)
-        se3.framesKinematics(robot.model,robot.data)
-        se3.computeJacobians(robot.model,robot.data,q)
+        se3.updateFramePlacements(robot.model,robot.data)
+        se3.computeJointJacobians(robot.model,robot.data,q)
         M  = robot.data.M        #(7,7)
         h  = robot.data.nle      #(7,1)
         Jl,Jr = robot.get_Jl_Jr_world(q)
@@ -158,8 +161,8 @@ class Simu:
         if compute_data :
             se3.forwardKinematics(robot.model,robot.data,q,v)
             se3.computeAllTerms(robot.model,robot.data,q,v)
-            se3.framesKinematics(robot.model,robot.data)
-            se3.computeJacobians(robot.model,robot.data,q)
+            se3.updateFramePlacements(robot.model,robot.data)
+            se3.computeJointJacobians(robot.model,robot.data,q)
 
         Mrf = self.Mrf0.inverse()*robot.data.oMf[RF]
         Mlf = self.Mlf0.inverse()*robot.data.oMf[LF]
@@ -175,13 +178,13 @@ class Simu:
             self.vrf = zero(3)
             if(self.right_foot_contact):
                 self.right_foot_contact = False
-                print "\nSIMU INFO %.3f Right foot contact broken!"%(self.t)
+                print "\nt %.3f SIMU INFO: Right foot contact broken!"%(self.t)
         else:
             self.frf[[1,2,3]] = self.Krf*qrf + self.Brf*vrf                      # Right force in effector frame            
             self.vrf = vrf
             if(not self.right_foot_contact):
                 self.right_foot_contact = True
-                print "\nSIMU INFO %.3f Right foot contact made!"%(self.t)
+                print "\nt %.3f SIMU INFO: Right foot contact made!"%(self.t)
         #~ rf0_frf = se3.Force(frf)                                        # Force in rf0 frame
         #~ rk_frf  = (robot.data.oMi[RK].inverse()*self.Mrf0).act(rf0_frf) # Spring force in R-knee frame.
             
@@ -190,13 +193,13 @@ class Simu:
             self.vlf = zero(3)
             if(self.left_foot_contact):
                 self.left_foot_contact = False
-                print "\nSIMU INFO %.3f Left foot contact broken!"%(self.t)
+                print "\nt %.3f SIMU INFO: Left foot contact broken!"%(self.t)
         else:
             self.flf[[1,2,3]] = self.Klf*qlf + self.Blf*vlf                      # Left force in effector frame
             self.vlf = vlf
             if(not self.left_foot_contact):
                 self.left_foot_contact = True
-                print "\nSIMU INFO %.3f Left foot contact made!"%(self.t)
+                print "\nt %.3f SIMU INFO: Left foot contact made!"%(self.t)
         #~ lf0_flf = se3.Force(flf)                                        # Force in lf0 frame
         #~ lk_flf  = (robot.data.oMi[LK].inverse()*self.Mlf0).act(lf0_flf) # Spring force in L-knee frame.
 
@@ -213,7 +216,16 @@ class Simu:
             margins = self.B_f * self.f - self.b_f
             if (margins>0.0).any():
                 ind = np.where(margins>0.0)[0]
-                print "SIMU WARNING: friction cone violations: ", ind, margins[ind].T
+                if(norm(margins[ind]) > self.friction_cones_max_violation):
+                    self.friction_cones_max_violation = norm(margins[ind])
+                if(not self.friction_cones_violated):
+                    print "t %.3f SIMU WARNING: friction cone violation started: "%self.t, ind, margins[ind].T
+                self.friction_cones_violated = True
+            else:
+                if(self.friction_cones_violated):
+                    print "t %.3f SIMU WARNING: friction cone violation ended with max violation %.3f "%(self.t, self.friction_cones_max_violation)
+                self.friction_cones_violated = False
+                self.friction_cones_max_violation = 0.0
 
         return self.f,self.df
         
