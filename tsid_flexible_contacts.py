@@ -149,7 +149,7 @@ class TsidFlexibleContact:
         Kp_post, Kd_post = self.Kp_post, self.Kd_post
 
         se3.computeAllTerms(robot.model,robot.data,q,v)
-        se3.framesKinematics(robot.model,robot.data,q)
+        se3.updateFramePlacements(robot.model,robot.data)
         se3.rnea(robot.model,robot.data,q,v,0*v)
         M = robot.data.M        #(7,7)
         h = robot.data.nle      #(7,1)

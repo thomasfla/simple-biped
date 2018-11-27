@@ -82,7 +82,7 @@ class Hrp2Reduced:
 
         if self.useViewer:
             self.viewer  = viewer   = robot.viewer.gui
-        self.model   = modelred = se3.Model.BuildEmptyModel()
+        self.model   = modelred = se3.Model() #.BuildEmptyModel()
         self.visuals = visuals  = []
 
         colorwhite   = [red,green,blue,transparency] = [1,1,0.78,1.0]
@@ -206,13 +206,15 @@ class Hrp2Reduced:
     def get_Jl_Jr_world(self, q, update=True):
         if update==True:
             se3.forwardKinematics(self.model,self.data,q)
-            se3.computeJacobians(self.model,self.data,q)
-            se3.framesKinematics(self.model,self.data,q)
+            se3.computeJointJacobians(self.model,self.data,q)
+            se3.framesForwardKinematics(self.model,self.data,q)
         oMlf, oMrf = self.get_Mlf_Mrf(q,False)
         rotLF = se3.SE3(oMlf.rotation,0*oMlf.translation)
         rotRF = se3.SE3(oMrf.rotation,0*oMrf.translation)
-        Jl = se3.frameJacobian(self.model,self.data,self.LF)
-        Jr = se3.frameJacobian(self.model,self.data,self.RF)        
+#        Jl = se3.frameJacobian(self.model,self.data,self.LF)
+        Jl = se3.getFrameJacobian(self.model, self.data, self.LF, se3.ReferenceFrame.LOCAL)
+#        Jr = se3.frameJacobian(self.model,self.data,self.RF)        
+        Jr = se3.getFrameJacobian(self.model, self.data, self.RF, se3.ReferenceFrame.LOCAL)
         Jl2 = rotLF.action * Jl
         Jr2 = rotRF.action * Jr
         return Jl2,Jr2 #return the rotated jacobian (WORLD)
@@ -221,7 +223,7 @@ class Hrp2Reduced:
     def get_Mlf_Mrf(self, q, update=True):
         if update==True:
             se3.forwardKinematics(self.model,self.data,q)
-            se3.framesKinematics(self.model,self.data,q)
+            se3.framesForwardKinematics(self.model,self.data,q)
         oMlf = self.data.oMf[self.LF].copy()
         oMrf = self.data.oMf[self.RF].copy()
         return oMlf, oMrf
@@ -229,7 +231,7 @@ class Hrp2Reduced:
     def get_classic_alf_arf(self,q,v,a,update=True):
         if update==True:
             se3.forwardKinematics(self.model,self.data,q,v,a)
-            se3.framesKinematics(self.model,self.data,q)        
+            se3.framesForwardKinematics(self.model,self.data,q)        
         v_LF,v_RF = self.get_vlf_vrf_world(q,v,False)
         a_LF,a_RF = self.get_alf_arf_world(q,v,a,False)
         classic_alf = a_LF
@@ -242,7 +244,7 @@ class Hrp2Reduced:
         '''return dJdq of the feet in the world frame'''
         if update==True:
             se3.forwardKinematics(self.model,self.data,q,v,0*v)
-            se3.framesKinematics(self.model,self.data,q)
+            se3.framesForwardKinematics(self.model,self.data,q)
         driftLF,driftRF = self.get_classic_alf_arf(q,v,0*v,False)
         #~ v_LF,v_RF = self.get_vlf_vrf_world(q,v,False)
         #~ a_LF,a_RF = self.get_alf_arf_world(q,v,0*v,False)
@@ -255,7 +257,7 @@ class Hrp2Reduced:
     def get_vlf_vrf_world(self, q, v, update=True):
         if update==True:
             se3.forwardKinematics(self.model,self.data,q,v)
-            se3.framesKinematics(self.model,self.data,q)
+            se3.framesForwardKinematics(self.model,self.data,q)
         Mlf,Mrf = self.get_Mlf_Mrf(q, False)
         Rlf = se3.SE3(Mlf.rotation, 0*Mlf.translation)
         Rrf = se3.SE3(Mrf.rotation, 0*Mrf.translation)
@@ -268,7 +270,7 @@ class Hrp2Reduced:
     def get_alf_arf_world(self, q, v, a, update=True):
         if update==True:
             se3.forwardKinematics(self.model,self.data,q,v,a)
-            se3.framesKinematics(self.model,self.data,q)
+            se3.framesForwardKinematics(self.model,self.data,q)
         Mlf,Mrf = self.get_Mlf_Mrf(q,False)
         Rlf = se3.SE3(Mlf.rotation, 0*Mlf.translation)
         Rrf = se3.SE3(Mrf.rotation, 0*Mrf.translation)
