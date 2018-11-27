@@ -54,6 +54,7 @@ CONTROLLER = 'adm_ctrl'             # either 'tsid_rigid' or 'tsid_flex' or 'tsi
 F_DISTURB = np.matrix([4e2, 0, 0]).T
 COM_SIN_AMP = np.array([0.0, 0.0])
 ZETA = .3   # with zeta=0.03 and ndt=100 it is unstable
+k = 1.0
 mu_simu = 0.3    # contact force friction coefficient
 mu_ctrl = 0.3    # contact force friction coefficient
 fMin = 10.0
@@ -81,7 +82,7 @@ USE_ESTIMATOR = 0              # use real state for controller feedback
 T_DISTURB_BEGIN = 0.10          # Time at which the disturbance starts
 T_DISTURB_END   = 0.11          # Time at which the disturbance ends
 
-INPUT_PARAMS = ['controller=', 'com_sin_amp=', 'f_dist=', 'zeta=', 'use_estimator=', 'T=']
+INPUT_PARAMS = ['controller=', 'com_sin_amp=', 'f_dist=', 'zeta=', 'use_estimator=', 'T=', 'k=']
 try:
     opts, args = getopt.getopt(sys.argv[1:],"",INPUT_PARAMS)
 except getopt.GetoptError:
@@ -100,6 +101,8 @@ for opt, arg in opts:
         F_DISTURB[0,0] = float(arg);
     elif opt == "--zeta":
         ZETA = float(arg);
+    elif opt == "--k":
+        k = float(arg);
     elif opt == "--use_estimator":
         USE_ESTIMATOR = bool(arg);
     elif opt == "--T":
@@ -110,12 +113,13 @@ print "- controller =   ", CONTROLLER
 print "- com_sin_amp =  ", COM_SIN_AMP[0]
 print "- f_dist =       ", F_DISTURB[0,0]
 print "- zeta =         ", ZETA
+print "- k =            ", k
 print "- use estimator =", USE_ESTIMATOR
 print "- T =            ", simulation_time
 print "- tau_c =        ", tauc
 print "\n"
      
-TEST_DESCR_STR = CONTROLLER + '_zeta_'+str(ZETA)
+TEST_DESCR_STR = CONTROLLER + '_zeta_'+str(ZETA) + '_k_'+str(k)
 if(COM_SIN_AMP[0]!=0.0):
     TEST_DESCR_STR += '_comSinAmp_'+str(COM_SIN_AMP[0])
 if(F_DISTURB[0,0]!=0.0):
@@ -143,8 +147,8 @@ if useViewer:
                                        0.5243823528289795, 0.518651008605957, 0.4620114266872406, 0.4925136864185333])
 
 #robot parameters
-Ky = 23770.
-Kz = 239018.
+Ky = k*23770.
+Kz = k*239018.
 By = ZETA*2*sqrt(Ky) #50e0
 Bz = ZETA*2*sqrt(Kz) #500e0
 Kspring = -np.diagflat([Ky,Kz,0.])     # Stiffness of the feet spring
