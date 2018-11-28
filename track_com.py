@@ -21,6 +21,7 @@ from robot_model_path import pkg, urdf
 from utils.noise_utils import NoisyState
 from estimation.momentumEKF import MomentumEKF
 import getopt, sys, os, datetime
+from math import log
 
 try:
     from IPython import embed
@@ -77,7 +78,7 @@ SHOW_FIGURES                        = 0
 #Simulation parameters
 dt  = 1e-3
 ndt = 10
-simulation_time = 1.5
+simulation_time = 2.0
 USE_ESTIMATOR = 0              # use real state for controller feedback
 T_DISTURB_BEGIN = 0.10          # Time at which the disturbance starts
 T_DISTURB_END   = 0.11          # Time at which the disturbance ends
@@ -145,6 +146,10 @@ robot.display(robot.q0)
 if useViewer:
     robot.viewer.setCameraTransform(0,[1.9154722690582275, -0.2266872227191925, 0.1087859719991684,
                                        0.5243823528289795, 0.518651008605957, 0.4620114266872406, 0.4925136864185333])
+
+if(k>1.0): 
+    ndt = int(ndt*(1+log(k)))
+    print 'Increasing ndt to %d'%(ndt)
 
 #robot parameters
 Ky = k*23770.

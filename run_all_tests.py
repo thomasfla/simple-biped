@@ -10,12 +10,13 @@ from __future__ import print_function
 import itertools
 from select     import select
 from subprocess import Popen, PIPE, STDOUT
+import time
 
 controllers = ['tsid_rigid', 'tsid_flex', 'tsid_adm', 'tsid_mistry', 'adm_ctrl']
 f_dists = [400.]
 com_sin_amps = [0.0]
-zetas = [0.1, 0.2, 0.3, 0.5]
-ks = [1., 0.1]
+zetas = [0.1, 0.2, 0.4, 0.8]
+ks = [0.1, 0.2, 0.4, 1.0, 2.0]
 T = 2.0
 
 processes = []
@@ -24,6 +25,7 @@ for (ctrl, f_dist, com_sin_amp, zeta, k) in itertools.product(controllers, f_dis
     print("Execute this command:\n", cmd, "\n")
     # start several subprocesses
     processes += [Popen(cmd.split(), stdout=PIPE, stderr=STDOUT, bufsize=1, close_fds=True, universal_newlines=True)]
+    time.sleep(1.)
     
 # read output
 timeout = 0.1 # seconds

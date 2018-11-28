@@ -5,19 +5,15 @@ Created on Fri Nov  2 10:57:32 2018
 @author: adelprete
 """
 
-import pinocchio as se3
 from numpy import matlib
 import numpy as np
 from numpy.linalg import norm
+import matplotlib.pyplot as plt
 
-import copy 
-from pinocchio.utils import *
-from math import pi,sqrt
 from simple_biped.hrp2_reduced import Hrp2Reduced
 from simple_biped.utils.logger import RaiLogger
-from simple_biped.utils.utils_thomas import traj_norm, rmse, finite_diff
+from simple_biped.utils.utils_thomas import finite_diff, compute_stats
 from simple_biped.utils.tsid_utils import createContactForceInequalities
-import matplotlib.pyplot as plt
 import simple_biped.utils.plot_utils as plut
 from simple_biped.utils.regex_dict import RegexDict
 from simple_biped.robot_model_path import pkg, urdf 
@@ -32,22 +28,27 @@ np.set_printoptions(precision=1, linewidth=200, suppress=True)
 
 
 # User parameters
-keys = ['ctrl', 'fDist', 'com_sin_amp', 'zeta', 'k']
-controllers = ['tsid_rigid', 'tsid_flex', 'tsid_adm', 'tsid_mistry', 'adm_ctrl']
-f_dists = [400.]
-com_sin_amps = [0.0]
-zetas = [0.1, 0.2, 0.3, 0.5]
-ks = [1., 0.1]
-T = 2.0
-DATA_DIR = os.getcwd()+'/../data/data_comparison_paper_v3/'
-#DATA_DIR = str(os.path.dirname(os.path.abspath(__file__)))+'../data/data_comparison_paper_v3/'
-DATA_FILE_NAME = 'logger_data.npz'
-OUTPUT_DATA_FILE_NAME = 'summary_data'
-SAVE_DATA = 1
-LOAD_DATA = 1
-dt  = 1e-3
-mu = 0.3
+keys                    = ['ctrl', 'fDist', 'com_sin_amp', 'zeta', 'k']
+controllers             = ['tsid_rigid', 'tsid_flex', 'tsid_adm', 'tsid_mistry', 'adm_ctrl']
+f_dists                 = [400.]
+com_sin_amps            = [0.0]
+#zetas                   = [0.1, 0.2, 0.3, 0.5]
+#ks                      = [1., 0.1]
+zetas                   = [0.1, 0.2, 0.4, 0.8]
+ks                      = [0.1, 0.2, 0.4, 1.0, 2.0]
+#T                       = 2.0
+DATA_DIR                = os.getcwd()+'/../data/data_comparison_paper_v4/'
+#DATA_DIR               = str(os.path.dirname(os.path.abspath(__file__)))+'../data/data_comparison_paper_v3/'
+DATA_FILE_NAME          = 'logger_data.npz'
+OUTPUT_DATA_FILE_NAME   = 'summary_data'
+SAVE_DATA               = 1
+LOAD_DATA               = 1
+plut.SAVE_FIGURES       = 1
+SHOW_FIGURES            = 0
+dt                      = 1e-3
+mu                      = 0.3
 
+plut.FIGURE_PATH        = DATA_DIR
 if(LOAD_DATA):
     try:
         f = open(DATA_DIR+OUTPUT_DATA_FILE_NAME+'.pkl', 'rb');
@@ -113,26 +114,30 @@ if(not LOAD_DATA):
         ddf = lgr.get_vector('simu_ddf', nf)
         
         data = Empty()
-        data.com_pos_err  = traj_norm((com_p - com_ref).T)
-        data.com_vel_err  = traj_norm(com_v.T)
-        data.com_acc_err  = traj_norm(com_a.T)
-        data.com_jerk_err = traj_norm(com_j.T)
-        data.com_snap_err = traj_norm(com_s.T)
-        data.df_norm      = traj_norm(df.T)
-        data.ddf_norm     = traj_norm(ddf.T)
-        print "CoM pos tracking RMSE:    %.1f mm"%(1e3*np.mean(data.com_pos_err))
-    #    print "Max CoM pos tracking err: %.1f mm"%(1e3*np.max(data.com_pos_err))
-    #    print "CoM vel RMSE:    %.1f mm"%(1e3*np.mean(data.com_vel_err))
-    #    print "CoM acc RMSE:    %.1f mm"%(1e3*np.mean(data.com_acc_err))
-        print "CoM jerk RMSE:            %.1f m/s^3"%(np.mean(data.com_jerk_err))
-        print "CoM snap RMSE:            %.1f m/s^4"%(np.mean(data.com_snap_err))
-        print "Force vel RMS:            %.1f N/s"%(np.mean(data.df_norm))
-        print "Force acc RMS:            %.1f N/s^2"%(np.mean(data.ddf_norm))
+        def compute_stats_and_add_to_data(name, x):
+            mean_err, rmse, max_err = compute_stats(x)
+            data.__dict__[name+'_mean_err']  = mean_err
+            data.__dict__[name+'_rmse']      = rmse
+            data.__dict__[name+'_max_err']   = max_err
+            
+        compute_stats_and_add_to_data('com_pos', com_p-com_ref)
+        compute_stats_and_add_to_data('com_vel', com_v)
+        compute_stats_and_add_to_data('com_acc', com_a)
+        compute_stats_and_add_to_data('com_jerk', com_j)
+        compute_stats_and_add_to_data('com_snap', com_s)
+        compute_stats_and_add_to_data('df',      df)
+        compute_stats_and_add_to_data('ddf',     ddf)
+        print "CoM pos tracking RMSE:    %.1f mm"%(1e3*data.com_pos_rmse)
+        print "CoM jerk RMSE:            %.1f m/s^3"%(data.com_jerk_rmse)
+        print "CoM snap RMSE:            %.1f m/s^4"%(data.com_snap_rmse)
+        print "Force vel RMS:            %.1f N/s"%(data.df_rmse)
+        print "Force acc RMS:            %.1f N/s^2"%(data.ddf_rmse)
         
-        data.fric_cone_viol = np.zeros(T)
+        fric_cone_viol = np.zeros(T)
         for t in range(f.shape[1]):
             tmp = np.max(B_f * f[:,t] - b_f)
-            if(tmp>0.0): data.fric_cone_viol[t] = tmp
+            if(tmp>0.0): fric_cone_viol[t] = tmp
+        compute_stats_and_add_to_data('fric_cone_viol', fric_cone_viol)
         
         key = res.generate_key(keys, (ctrl, f_dist, com_sin_amp, zeta, k))
         res[key] = data
@@ -143,7 +148,7 @@ if(not LOAD_DATA):
             pickle.dump(res, f, pickle.HIGHEST_PROTOCOL)
         
 
-def plot_from_multikey_dict(d, keys, x_var, y_var, fixed_params, variab_param):
+def plot_from_multikey_dict(d, keys, x_var, y_var, fixed_params, variab_param, yscale=None):
 #    print '\n', (' Elements matching pattern '+str(fixed_params)+' ').center(100,'#')
     matching_keys = d.get_matching_keys(keys, fixed_params)
     x, y = {}, {}
@@ -152,7 +157,7 @@ def plot_from_multikey_dict(d, keys, x_var, y_var, fixed_params, variab_param):
         if z_i not in x: x[z_i], y[z_i] = [], []    
         data = d[mk]
         x[z_i] += [float(d.extract_key_value(mk, x_var))]
-        y[z_i] += [rmse(data.__dict__[y_var])]
+        y[z_i] += [data.__dict__[y_var]]
 #        print (' '+mk+' ').center(80,'-'), "\n%s %.3f"%(y_var.ljust(20), y[z_i][-1])
     
     plt.figure()
@@ -165,28 +170,39 @@ def plot_from_multikey_dict(d, keys, x_var, y_var, fixed_params, variab_param):
     plt.xlabel(x_var)
     plt.ylabel(y_var)
     plt.legend()
+    if yscale is not None: plt.yscale(yscale)
+    fig_name = y_var+'_VS_'+x_var
+    for (k,v) in zip(keys, fixed_params):
+        if(v is not None):
+            fig_name += '__'+k+'='+str(v)
+    plut.saveFigure(fig_name)
     return (x,y)
 
-# keys =    ['ctrl', 'fDist', 'com_sin_amp', 'zeta', 'k']
-fDist, k = 400.0, 1.0
-plot_from_multikey_dict(res, keys, x_var='zeta', y_var='com_pos_err',       fixed_params=[None, fDist, 0.0, None, k], variab_param='ctrl')
-plot_from_multikey_dict(res, keys, x_var='zeta', y_var='com_jerk_err',      fixed_params=[None, fDist, 0.0, None, k], variab_param='ctrl')
-plot_from_multikey_dict(res, keys, x_var='zeta', y_var='com_snap_err',      fixed_params=[None, fDist, 0.0, None, k], variab_param='ctrl')
-#plot_from_multikey_dict(res, keys, x_var='zeta', y_var='df_norm',           fixed_params=[None, fDist, 0.0, None, k], variab_param='ctrl')
-plot_from_multikey_dict(res, keys, x_var='zeta', y_var='ddf_norm',          fixed_params=[None, fDist, 0.0, None, k], variab_param='ctrl')
-plot_from_multikey_dict(res, keys, x_var='zeta', y_var='fric_cone_viol',    fixed_params=[None, fDist, 0.0, None, k], variab_param='ctrl')
+err_kinds = ['mean_err', 'rmse', 'max_err']
+for ek in err_kinds:
+    # keys =    ['ctrl', 'fDist', 'com_sin_amp', 'zeta', 'k']
+    yscale = 'log'
+    fDist, k = 400.0, 1.0
+    plot_from_multikey_dict(res, keys, 'zeta', 'com_pos_'+ek,       fixed_params=[None, fDist, 0.0, None, k], variab_param='ctrl', yscale=yscale)
+    plot_from_multikey_dict(res, keys, 'zeta', 'com_jerk_'+ek,      fixed_params=[None, fDist, 0.0, None, k], variab_param='ctrl', yscale=yscale)
+    plot_from_multikey_dict(res, keys, 'zeta', 'com_snap_'+ek,      fixed_params=[None, fDist, 0.0, None, k], variab_param='ctrl', yscale=yscale)
+    #plot_from_multikey_dict(res, keys, 'zeta', 'df_norm',           fixed_params=[None, fDist, 0.0, None, k], variab_param='ctrl')
+    plot_from_multikey_dict(res, keys, 'zeta', 'ddf_'+ek,           fixed_params=[None, fDist, 0.0, None, k], variab_param='ctrl', yscale=yscale)
+    plot_from_multikey_dict(res, keys, 'zeta', 'fric_cone_viol_'+ek, fixed_params=[None, fDist, 0.0, None, k], variab_param='ctrl', yscale=yscale)
+    
+    #fDist, k = 400.0, 0.1
+    #plot_from_multikey_dict(res, keys, 'zeta', 'com_pos_'+ek,       fixed_params=[None, fDist, 0.0, None, k], variab_param='ctrl', yscale=yscale)
+    #plot_from_multikey_dict(res, keys, 'zeta', 'com_jerk_'+ek,      fixed_params=[None, fDist, 0.0, None, k], variab_param='ctrl', yscale=yscale)
+    #plot_from_multikey_dict(res, keys, 'zeta', 'com_snap_'+ek,      fixed_params=[None, fDist, 0.0, None, k], variab_param='ctrl', yscale=yscale)
+    ##plot_from_multikey_dict(res, keys, 'zeta', 'df_'+ek,           fixed_params=[None, fDist, 0.0, None, k], variab_param='ctrl', yscale=yscale)
+    #plot_from_multikey_dict(res, keys, 'zeta', 'ddf_'+ek,           fixed_params=[None, fDist, 0.0, None, k], variab_param='ctrl', yscale=yscale)
+    #plot_from_multikey_dict(res, keys, 'zeta', 'fric_cone_viol_'+ek, fixed_params=[None, fDist, 0.0, None, k], variab_param='ctrl', yscale=yscale)
+    
+    zeta = 0.2
+    plot_from_multikey_dict(res, keys, 'k',    'com_pos_'+ek,       fixed_params=[None, fDist, 0.0, zeta, None], variab_param='ctrl', yscale=yscale)
+    plot_from_multikey_dict(res, keys, 'k',    'com_jerk_'+ek,      fixed_params=[None, fDist, 0.0, zeta, None], variab_param='ctrl', yscale=yscale)
+    plot_from_multikey_dict(res, keys, 'k',    'ddf_'+ek,           fixed_params=[None, fDist, 0.0, zeta, None], variab_param='ctrl', yscale=yscale)
+    plot_from_multikey_dict(res, keys, 'k',    'fric_cone_viol_'+ek, fixed_params=[None, fDist, 0.0, zeta, None], variab_param='ctrl', yscale=yscale)
 
-#fDist, k = 400.0, 0.1
-#plot_from_multikey_dict(res, keys, x_var='zeta', y_var='com_pos_err',       fixed_params=[None, fDist, 0.0, None, k], variab_param='ctrl')
-#plot_from_multikey_dict(res, keys, x_var='zeta', y_var='com_jerk_err',      fixed_params=[None, fDist, 0.0, None, k], variab_param='ctrl')
-#plot_from_multikey_dict(res, keys, x_var='zeta', y_var='com_snap_err',      fixed_params=[None, fDist, 0.0, None, k], variab_param='ctrl')
-##plot_from_multikey_dict(res, keys, x_var='zeta', y_var='df_norm',           fixed_params=[None, fDist, 0.0, None, k], variab_param='ctrl')
-#plot_from_multikey_dict(res, keys, x_var='zeta', y_var='ddf_norm',          fixed_params=[None, fDist, 0.0, None, k], variab_param='ctrl')
-#plot_from_multikey_dict(res, keys, x_var='zeta', y_var='fric_cone_viol',    fixed_params=[None, fDist, 0.0, None, k], variab_param='ctrl')
-
-plot_from_multikey_dict(res, keys, x_var='k',    y_var='com_pos_err',       fixed_params=[None, 400.0, 0.0, 0.3, None], variab_param='ctrl')
-plot_from_multikey_dict(res, keys, x_var='k',    y_var='com_jerk_err',      fixed_params=[None, 400.0, 0.0, 0.3, None], variab_param='ctrl')
-plot_from_multikey_dict(res, keys, x_var='k',    y_var='ddf_norm',          fixed_params=[None, 400.0, 0.0, 0.3, None], variab_param='ctrl')
-plot_from_multikey_dict(res, keys, x_var='k',    y_var='fric_cone_viol',    fixed_params=[None, 400.0, 0.0, 0.3, None], variab_param='ctrl')
-
-plt.show()
+    if(SHOW_FIGURES):
+        plt.show()

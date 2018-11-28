@@ -32,13 +32,6 @@ class RegexDict(dict):
         return matching_keys
         
     def get_matching(self, keys, values):
-#        matching_keys = self.keys()
-#        for (k,v) in zip(keys, values):
-#            if(v is not None):
-#                regexp = '.*'+k+'='+str(v)+'.*'
-#                matching_keys = [key for key in matching_keys if re.match(regexp, key)]
-#            print "Keys matching %s:"%(regexp)
-#            for key in matching_keys: print '   ', key
         matching_keys = self.get_matching_keys(keys, values)
         return (self[key] for key in matching_keys)
 
