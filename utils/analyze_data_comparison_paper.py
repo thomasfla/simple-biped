@@ -201,6 +201,7 @@ for ek in err_kinds:
     zeta = 0.2
     plot_from_multikey_dict(res, keys, 'k',    'com_pos_'+ek,       fixed_params=[None, fDist, 0.0, zeta, None], variab_param='ctrl', yscale=yscale)
     plot_from_multikey_dict(res, keys, 'k',    'com_jerk_'+ek,      fixed_params=[None, fDist, 0.0, zeta, None], variab_param='ctrl', yscale=yscale)
+    plot_from_multikey_dict(res, keys, 'k',    'com_snap_'+ek,      fixed_params=[None, fDist, 0.0, zeta, None], variab_param='ctrl', yscale=yscale)
     plot_from_multikey_dict(res, keys, 'k',    'ddf_'+ek,           fixed_params=[None, fDist, 0.0, zeta, None], variab_param='ctrl', yscale=yscale)
     plot_from_multikey_dict(res, keys, 'k',    'fric_cone_viol_'+ek, fixed_params=[None, fDist, 0.0, zeta, None], variab_param='ctrl', yscale=yscale)
 
