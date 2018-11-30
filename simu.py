@@ -31,6 +31,11 @@ class Simu:
     Based on a Hrp2Reduced robot model, implement the simulation with spring
     contact at the 2 ankles.
     '''
+    
+    @staticmethod
+    def get_default_contact_stiffness():
+        Ky, Kz = 23770., 239018.
+        return np.asmatrix(np.diagflat([Ky,Kz,Ky,Kz]))
 
     def __init__(self,robot,q0=None,dt=1e-3,ndt=10):
         '''
