@@ -15,11 +15,11 @@ from scipy.optimize import basinhopping
 import copy 
 from pinocchio.utils import *
 from math import pi,sqrt
-from hrp2_reduced import Hrp2Reduced
-from utils.logger import RaiLogger
+from simple_biped.hrp2_reduced import Hrp2Reduced
+from simple_biped.utils.logger import RaiLogger
 import matplotlib.pyplot as plt
-import utils.plot_utils as plut
-from robot_model_path import pkg, urdf 
+import simple_biped.utils.plot_utils as plut
+from simple_biped.robot_model_path import pkg, urdf 
 import os
 
 class Empty:
@@ -220,7 +220,7 @@ def compute_closed_loop_transition_matrix(gains_array, robot, q, v, update=True)
     
     if(update):
         se3.computeAllTerms(robot.model, robot.data, q, v)
-        se3.framesKinematics(robot.model, robot.data, q)
+        se3.framesForwardKinematics(robot.model, robot.data, q)
         
     M = robot.data.M        #(7,7)
     Jl,Jr = robot.get_Jl_Jr_world(q, False)
@@ -327,7 +327,7 @@ def callback(x, f, accept):
     print "%4d) Cost: %10.3f; Accept %d Gains:"%(nit, f, accept), x
     nit += 1;
     
-def optimize_gains(robot, gains_array, q0, v0, niter=100):
+def optimize_gains(robot, gains_array, q0, v0, niter=10):
     nominal_gains_array = copy.deepcopy(gains_array)
     H = compute_closed_loop_transition_matrix(gains_array, robot, q0, v0)
 #    step_response(H, N=10000, plot=0)
@@ -361,7 +361,7 @@ np.set_printoptions(precision=1, linewidth=200, suppress=True)
 PLOT_DYNAMICS_RESIDUAL = 0
 PLOT_EIGENVALUES_J_Minv_ST_Mj_diag_JSTpinv = 0
 
-INPUT_FILE = os.getcwd()+'/data/adm_ctrl_zeta_0.1_fDist_400.0/logger_data.npz'
+INPUT_FILE = os.getcwd()+'/../data/data_comparison_paper_v2/adm_ctrl_zeta_0.1_fDist_400.0/logger_data.npz'
 dt  = 1e-3
 ndt = 1
 ZETA = 0.1
