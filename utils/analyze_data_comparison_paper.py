@@ -15,7 +15,7 @@ from simple_biped.utils.logger import RaiLogger
 from simple_biped.utils.utils_thomas import finite_diff, compute_stats
 from simple_biped.utils.tsid_utils import createContactForceInequalities
 import simple_biped.utils.plot_utils as plut
-from simple_biped.utils.regex_dict import RegexDict
+from simple_biped.utils.regex_dict import RegexDict, plot_from_multikey_dict
 from simple_biped.robot_model_path import pkg, urdf 
 import os
 import itertools
@@ -146,37 +146,6 @@ if(not LOAD_DATA):
         print "Save results in", DATA_DIR + OUTPUT_DATA_FILE_NAME+'.pkl'
         with open(DATA_DIR + OUTPUT_DATA_FILE_NAME+'.pkl', 'wb') as f:
             pickle.dump(res, f, pickle.HIGHEST_PROTOCOL)
-        
-
-def plot_from_multikey_dict(d, keys, x_var, y_var, fixed_params, variab_param, yscale=None):
-#    print '\n', (' Elements matching pattern '+str(fixed_params)+' ').center(100,'#')
-    matching_keys = d.get_matching_keys(keys, fixed_params)
-    x, y = {}, {}
-    for mk in matching_keys:
-        z_i = d.extract_key_value(mk, variab_param)
-        if z_i not in x: x[z_i], y[z_i] = [], []    
-        data = d[mk]
-        x[z_i] += [float(d.extract_key_value(mk, x_var))]
-        y[z_i] += [data.__dict__[y_var]]
-#        print (' '+mk+' ').center(80,'-'), "\n%s %.3f"%(y_var.ljust(20), y[z_i][-1])
-    
-    plt.figure()
-    for key in x.keys():
-        xy = np.array(zip(x[key], y[key]), dtype=[('x', float), ('y', float)])
-        xy_sorted = np.sort(xy, order='x')
-        x_sorted = [xi for (xi,yi) in xy_sorted]
-        y_sorted = [yi for (xi,yi) in xy_sorted]
-        plt.plot(x_sorted, y_sorted, '-*', label=key)
-    plt.xlabel(x_var)
-    plt.ylabel(y_var)
-    plt.legend()
-    if yscale is not None: plt.yscale(yscale)
-    fig_name = y_var+'_VS_'+x_var
-    for (k,v) in zip(keys, fixed_params):
-        if(v is not None):
-            fig_name += '__'+k+'='+str(v)
-    plut.saveFigure(fig_name)
-    return (x,y)
 
 err_kinds = ['mean_err', 'rmse', 'max_err']
 for ek in err_kinds:
