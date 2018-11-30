@@ -17,13 +17,13 @@ def restert_viewer_server(procName='gepetto-gui', delay = 0.2):
 
 def compute_stats(err):
     ''' Given an PxN matrix representing a trajectory, where N is the number of time steps
-        and P is the size of the quantity, it computes the RMSE of the trajectory
+        and P is the size of the quantity, it computes the mean error, the RMSE and the max error of the trajectory
     '''
     if len(err.shape)>1: N = err.shape[1]
     else:                N = err.shape[0]
-    mean_err = np.mean(np.abs(np.asarray(err)))
-    rmse = np.sqrt(np.sum(np.asarray(err)**2)/N)
-    max_err = np.max(np.abs(np.asarray(err)))
+    mean_err    = np.mean(np.abs(np.asarray(err)))
+    max_err     = np.max(np.abs(np.asarray(err)))
+    rmse        = np.sqrt(np.sum(np.asarray(err)**2)/N)
     return mean_err, rmse, max_err
 
 def rmse(x):
