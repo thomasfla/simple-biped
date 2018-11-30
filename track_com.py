@@ -14,7 +14,8 @@ import utils.plot_utils as plut
 from utils.plot_utils import plot_from_logger
 from tsid import Tsid
 from tsid_admittance import TsidAdmittance
-from admittance_ctrl import AdmittanceControl
+from admittance_ctrl import AdmittanceControl, GainsAdmCtrl
+
 from tsid_flexible_contacts import TsidFlexibleContact
 from tsid_mistry import TsidMistry
 from robot_model_path import pkg, urdf 
@@ -82,8 +83,10 @@ simulation_time = 2.0
 USE_ESTIMATOR = 0              # use real state for controller feedback
 T_DISTURB_BEGIN = 0.10          # Time at which the disturbance starts
 T_DISTURB_END   = 0.11          # Time at which the disturbance ends
+gain_file = None
+test_name = None
 
-INPUT_PARAMS = ['controller=', 'com_sin_amp=', 'f_dist=', 'zeta=', 'use_estimator=', 'T=', 'k=']
+INPUT_PARAMS = ['controller=', 'com_sin_amp=', 'f_dist=', 'zeta=', 'use_estimator=', 'T=', 'k=', 'gain_file=', 'test_name=']
 try:
     opts, args = getopt.getopt(sys.argv[1:],"",INPUT_PARAMS)
 except getopt.GetoptError:
@@ -108,6 +111,10 @@ for opt, arg in opts:
         USE_ESTIMATOR = bool(arg);
     elif opt == "--T":
         simulation_time = float(arg);
+    elif opt == "--gain_file":
+        gain_file = str(arg)[1:-1];
+    elif opt == "--test_name":
+        test_name = str(arg)[1:-1];
 
 print "*** CURRENT CONFIGURATION ***"
 print "- controller =   ", CONTROLLER
@@ -118,18 +125,20 @@ print "- k =            ", k
 print "- use estimator =", USE_ESTIMATOR
 print "- T =            ", simulation_time
 print "- tau_c =        ", tauc
+print "- gain_file =    ", gain_file
+print "- test_name =    ", test_name
 print "\n"
      
-TEST_DESCR_STR = CONTROLLER + '_zeta_'+str(ZETA) + '_k_'+str(k)
-if(COM_SIN_AMP[0]!=0.0):
-    TEST_DESCR_STR += '_comSinAmp_'+str(COM_SIN_AMP[0])
-if(F_DISTURB[0,0]!=0.0):
-    TEST_DESCR_STR += '_fDist_'+str(F_DISTURB[0,0])
+if(test_name is None):
+    date_time = datetime.datetime.now().strftime('%Y%m%d_%H%M%S');
+    test_name = data_time+'_'+CONTROLLER + '_zeta_'+str(ZETA) + '_k_'+str(k)
+    if(COM_SIN_AMP[0]!=0.0):
+        test_name += '_comSinAmp_'+str(COM_SIN_AMP[0])
+    if(F_DISTURB[0,0]!=0.0):
+        test_name += '_fDist_'+str(F_DISTURB[0,0])
     
 if(SAVE_DATA):
-    date_time = datetime.datetime.now().strftime('%Y%m%d_%H%M%S');
-#    RESULTS_PATH = os.getcwd()+'/data/'+date_time+'_'+TEST_DESCR_STR+'/'
-    RESULTS_PATH = os.getcwd()+'/data/'+TEST_DESCR_STR+'/'
+    RESULTS_PATH = os.getcwd()+'/data/'+test_name+'/'
     print "Gonna save results in folder:", RESULTS_PATH
     try:
         os.makedirs(RESULTS_PATH);
@@ -137,9 +146,6 @@ if(SAVE_DATA):
         print "Directory already exists."
         raw_input("Are you sure that you want to continue? ")
     plut.FIGURE_PATH = RESULTS_PATH
-
-#TEST_DESCR_STR = '_'+TEST_DESCR_STR
-TEST_DESCR_STR = ''
     
 robot = Hrp2Reduced(urdf,[pkg],loadModel=True,useViewer=useViewer)
 robot.display(robot.q0)
@@ -156,6 +162,7 @@ Ky = k*23770.
 Kz = k*239018.
 By = ZETA*2*sqrt(Ky) #50e0
 Bz = ZETA*2*sqrt(Kz) #500e0
+K = np.asmatrix(np.diagflat([Ky,Kz,Ky,Kz]))
 Kspring = -np.diagflat([Ky,Kz,0.])     # Stiffness of the feet spring
 Bspring = -np.diagflat([By,Bz,0.])     # damping of the feet spring
 
@@ -201,6 +208,13 @@ S_0 = sigma_x_0**2 * np.eye(n_x)
 centroidalEstimator = MomentumEKF(dt, m, g_vec, c0.A1, dc0.A1, np.array([l0]), f0.A1, S_0, sigma_c, sigma_dc, sigma_l, sigma_f, sigma_ddf, sigma_f_dist)
 
 #Controller parameters
+gains_array = None
+if(gain_file is not None):
+    try:
+        gains_array = np.load(gain_file)
+    except:
+        print "Error while trying to read gain file:", gain_file
+                
 w_post = 0.001                  # postural task weight
 Kp_post = 10                    # postural task proportional feedback gain
 Kp_com = 50.0                  # com proportional feedback gain
@@ -228,30 +242,25 @@ elif(CONTROLLER=='tsid_adm'):
     Kp_adm, Kd_adm, Kp_com, Kd_com, Kf = 20.5603371308, 77.9184247381, 30.6694018561, 10.2970910213, 100*Kf # poles 5, 15, 25, 35
     tsid = TsidAdmittance(robot, Ky, Kz, w_post, Kp_post, Kp_com, Kf, Kp_adm, Kd_adm, fMin, mu_ctrl, centroidalEstimator)
 elif(CONTROLLER=='adm_ctrl'):
-    Kp_adm =  20.595206116527326
-    Kd_adm =  77.30991409334763
-    Kp_com =  21.10436997498271
-    Kd_com =  8.23474242150766
-    kp_bar =  16600.214218073572
-    kd_bar =  399.95938376411885
-    Kf = 1e-4*np.diag( [20.251365813877367, 10.458093022034928, 20.37570634792638, 9.813268738594545] )
-    
-#    Kp_adm =  22.9537359909956
-#    Kd_adm =  80.68185112673666
-#    Kp_com =  7.935731615521004
-#    Kd_com =  4.890811951197692
-#    kp_bar =  2524.8566339854556
-#    kd_bar =  413.7819220911169
-#    Kf = 1e-4*np.diag( [52.616998824211024, 33.49085603335332, 42.08732247994318, 33.44972673926459] )
+    if(gains_array is None):
+        gains = GainsAdmCtrl.get_default_gains(K)
+        gains.Kp_com = 21.10436997498271
+        gains.Kd_com = 8.23474242150766
+        gains.kp_bar = 16600.214218073572
+        gains.kd_bar = 399.95938376411885
+        gains.Kf     = 1e-4*matlib.diagflat([20.251365813877367, 10.458093022034928, 20.37570634792638, 9.813268738594545])
+    else:
+        gains = GainsAdmCtrl(gains_array)
     
     Mj_diag = np.matrix(np.diag(np.diag(robot.data.M[3:,3:])))
-    Kp_pos = kp_bar*Mj_diag
-    Kd_pos = kd_bar*Mj_diag
+    gains.Kp_pos = gains.kp_bar*Mj_diag
+    gains.Kd_pos = gains.kd_bar*Mj_diag
 
     tau_0 = np.matrix([-2.590388574401987, -214.40477481684383, 2.570829716838424, -214.5015213169777]).T
     q_cmd = q0.copy()
-    q_cmd[4:,0] += np.matrix(np.divide(tau_0.A1, np.diag(Kp_pos))).T
-    tsid = AdmittanceControl(robot, dt, q_cmd, Ky, Kz, w_post, Kp_post, Kp_com, Kf, Kp_adm, Kd_adm, Kp_pos, Kd_pos, fMin, mu_ctrl, centroidalEstimator)
+    q_cmd[4:,0] += np.matrix(np.divide(tau_0.A1, np.diag(gains.Kp_pos))).T
+    
+    tsid = AdmittanceControl(robot, dt, q_cmd, Ky, Kz, w_post, Kp_post, gains, fMin, mu_ctrl, centroidalEstimator)
 elif(CONTROLLER=='tsid_mistry'):
     w_post  = 1e-3                  # postural task weight
     tsid = TsidMistry(robot, Ky, Kz, By, Bz, w_post, Kp_post, Kp_com, Kd_com, dt, centroidalEstimator)
@@ -366,7 +375,7 @@ if PLOT_FORCES:
     ax[0].plot(tt,  mu_simu*np.array(lgr.simu_rkf_1), 'r:', label='right bounds')
     ax[0].plot(tt, -mu_simu*np.array(lgr.simu_rkf_1), 'r:') #, label='right min')
     ax[0].legend()
-    plut.saveFigure('contact_forces'+TEST_DESCR_STR)
+    plut.saveFigure('contact_forces')
 
 if(PLOT_FORCES and USE_ESTIMATOR):
     fields, labels, linest = [], [], []
@@ -377,12 +386,12 @@ if(PLOT_FORCES and USE_ESTIMATOR):
     labels += [['left',         'ekf left',   'right',        'ekf right']]
     linest += [['b', '--', 'r', '--']]
     plot_from_logger(lgr, dt, fields, labels, 'Contact Forces', linest, ylabel=['Y [N]', 'Z [N]'])
-    plut.saveFigure('contact_forces_est'+TEST_DESCR_STR)
+    plut.saveFigure('contact_forces_est')
 
 if PLOT_FORCE_VEL:
     plot_from_logger(lgr, dt, [['simu_df_'+str(i) for i in range(j,4,2)] for j in range(2)], 
                      [['left', 'right']]*2, 'Force velocity', ylabel=['Y [N/s]', 'Z [N/s]'])
-    plut.saveFigure('df'+TEST_DESCR_STR)
+    plut.saveFigure('df')
 
 if PLOT_FORCE_ACC:
     for i in range(4):
@@ -402,7 +411,7 @@ if PLOT_FORCE_ACC:
 #    fields = [['simu_ddf_'+str(i) for i in range(j,4,2)]+['tsid_ddf_des_'+str(i) for i in range(j,4,2)]+['simu_ddf_fd_'+str(i) for i in range(j,4,2)] for j in range(2)]
 #    plot_from_logger(lgr, dt, fields, [['left', 'right', 'left des', 'right des', 'left fd', 'right fd'], None], 
 #                     'Force acceleration', [['b', 'r', '--', '--']]*2, ylabel=['Y [N/s^2]', 'Z [N/s^2]'])
-#    plut.saveFigure('ddf'+TEST_DESCR_STR)
+#    plut.saveFigure('ddf')
 #    
 #    plot_from_logger(lgr, dt, [['tsid_B_ddf_max_'+str(j), 'tsid_B_ddf_UB_'+str(j), 'tsid_B_ddf_des_'+str(j)] for j in range(4)], 
 #                     [['max', 'UB', 'des'], None, None, None], 'Force constraint acceleration', 
@@ -445,7 +454,7 @@ if PLOT_CONTACT_POINT_ACC:
     labels = 2*[['real left', 'real right', 'des left', 'des right']]
     linest = 2*[['b',         'r',          '--',       '--'       ]]
     plot_from_logger(lgr, dt, fields, labels, 'Contact Point Accelerations', linest, ylabel=[s+' [m/s^2]' for s in ['Y','Z']])
-    plut.saveFigure('contact_point_acc'+TEST_DESCR_STR)
+    plut.saveFigure('contact_point_acc')
 
 if PLOT_COM_TRACKING :
     ax_lbl = {0:'Y', 1:'Z'}    
@@ -461,7 +470,7 @@ if PLOT_COM_TRACKING :
         ylabels = ['[m]', '[m/s]', '[m/s^2]', '[m/s^3]']
         titles  = ['Center of Mass '+ax_lbl[i]+' Pos.', 'Vel.', 'Acc.', 'Jerk']
         plot_from_logger(lgr, dt, fields, labels, titles=titles, linestyles=linest, ylabel=ylabels)
-        plut.saveFigure('com_tracking_'+ax_lbl[i]+TEST_DESCR_STR)
+        plut.saveFigure('com_tracking_'+ax_lbl[i])
 
 if PLOT_COM_ESTIMATION and USE_ESTIMATOR:
     ax_lbl = {0:'Y', 1:'Z'}    
@@ -472,7 +481,7 @@ if PLOT_COM_ESTIMATION and USE_ESTIMATOR:
         linest = 4*[[None, '--']]
         ylabels = [s+' '+um for (s,um) in zip(['Pos.', 'Vel.', 'Acc.', 'Jerk'], ['[m]', '[m/s]', '[m/s^2]', '[m/s^3]'])]
         plot_from_logger(lgr, dt, fields, labels, titles='Center of Mass '+ax_lbl[i], linestyles=linest, ylabel=ylabels)
-        plut.saveFigure('com_estimate_'+ax_lbl[i]+TEST_DESCR_STR)
+        plut.saveFigure('com_estimate_'+ax_lbl[i])
 
 #plot_from_logger(lgr, dt, [['tsid_dv_'+str(i), 'simu_dv_'+str(i)] for i in range(4)])  
     
@@ -484,17 +493,17 @@ elif CONTROLLER=='tsid_flex' and PLOT_COM_SNAP:
     
 if PLOT_ANGULAR_MOMENTUM_DERIVATIVES:
     plot_from_logger(lgr, dt, [['simu_am'], ['simu_dam'], ['simu_ddam']])
-    plut.saveFigure('angular_momentum'+TEST_DESCR_STR)
+    plut.saveFigure('angular_momentum')
 
 if(PLOT_JOINT_TORQUES):
     plot_from_logger(lgr, dt, [['tsid_tau_'+str(i) for i in range(4)]], [['right hip', 'right knee', 'left hip', 'left knee']], ylabel='Joint Generalized Force [N]/[Nm]')
-    plut.saveFigure('joint_torques'+TEST_DESCR_STR)
+    plut.saveFigure('joint_torques')
    
 if(PLOT_JOINT_ANGLES):
     plot_from_logger(lgr, dt, [['simu_q_'+str(i), 'tsid_q_cmd_'+str(i-4)] for i in range(4,8)], [['q', 'q_cmd']]*4,
                           titles=['right hip', 'right knee', 'left hip', 'left knee'], 
                           linestyles=[['-', '--']]*4, ncols=2, ylabel='Joint Angles [rad]]')
-    plut.saveFigure('joint_angles'+TEST_DESCR_STR)
+    plut.saveFigure('joint_angles')
     
 if(SAVE_DATA):
     lgr.dump_compressed(RESULTS_PATH+'logger_data')
