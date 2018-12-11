@@ -11,6 +11,7 @@ from numpy import matlib
 import numpy as np
 from numpy.linalg import norm, eigvals, eig
 from scipy.linalg import expm
+from scipy.signal import place_poles
 import matplotlib.pyplot as plt
 
 from pinocchio.utils import *
@@ -23,6 +24,27 @@ np.set_printoptions(precision=1, linewidth=200, suppress=True)
 class Empty:
     pass
     
+def simulate_LDS(A, B, K, x0, dt, N):
+    '''Simulate a Linear Dynamical System (LDS) forward in time 
+        A: transition matrix
+        B: control matrix
+        K: feedback gain matrix
+        x0: initial state
+        dt: time step
+        N: number of time steps to simulate
+    '''
+    n = A.shape[0]
+    m = B.shape[1]
+    x = matlib.empty((n,N))
+    u = matlib.empty((m,N-1))
+    x[:,0] = x0
+    H = A - B*K
+    e_dtH = expm(dt*H)
+    for i in range(N-1):
+        x[:,i+1] = e_dtH * x[:,i]
+        u[:,i]   = -K*x[:,i]
+    return (x,u)
+        
 def simulate_ALDS(H, x0, dt, N, plot=False, show_plot=None):
     '''Simulate an Autonomous Linear Dynamical System (ALDS) forward in time 
         H: transition matrix
@@ -52,6 +74,64 @@ def simulate_ALDS(H, x0, dt, N, plot=False, show_plot=None):
             plt.show()
     return x
 
+def compute_integrator_dynamics(K):
+    ''' Compute the matrices associated to an n-th order continuous time integrator.
+        The form of the dynamics is: 
+            dx = A*x + B*u
+        The control law is a linear state feedback:
+            u = -K*x
+        Input parameters:
+            K : n-dimensional vector of feedback gains
+        Returns a tuple containing the following elements:
+            H: closed-loop dynamics matrix (A-B*K)
+            A: state transition matrix
+            B: control input matrix
+    '''
+    n = K.shape[1]
+    H = matlib.zeros((n,n))
+    A = matlib.zeros((n,n))
+    B = matlib.zeros((n,1))    
+    H[-1,:] = -K
+    B[-1,0] = 1.0
+    for i in range(n-1):
+        H[i,i+1] = 1.0
+        A[i,i+1] = 1.0
+    return (H, A, B);
+
+
+def compute_integrator_dynamics_dt(K, dt):
+    assert(K.shape[0]==4)
+    assert(K.shape[1]==4)
+    dt2 = dt*dt/2.0
+    dt3 = dt*dt2/3.0
+    dt4 = dt*dt3/4.0
+    A = np.matrix( [[1,        dt,      dt2,     dt3],
+                   [0,         1,       dt,     dt2],
+                   [0,         0,        1,      dt],
+                   [0,         0,        0,       1]])
+    B = np.matrix([[dt4, dt3, dt2, dt]]).T
+    H = A - np.outer(B,K)
+    return (H, A, B);
+    
+    
+def compute_integrator_gains(n, p1, dp, dt=None):
+    ''' Compute the feedback gains to get the specified poles of the closed-loop dynamics
+        n:  order of the integrator
+        p1: the first pole
+        dp: the distance between consecutive poles
+        dt: time step, if system is discrete time, None otherwise
+    '''
+    des_poles = np.array([p1+i*dp for i in range(n)])
+    if(dt is not None):
+        (H, A, B) = compute_integrator_dynamics_dt(matlib.zeros((1,n)), dt)
+        des_poles = np.exp(des_poles*dt)
+    else:
+        (H, A, B) = compute_integrator_dynamics(matlib.zeros((1,n)))
+    res = place_poles(A, B, des_poles)
+    des_gains = res.gain_matrix.squeeze()
+    return des_gains
+    
+    
 def compute_quadratic_state_integral_ALDS(H, x0, T, dt=None):
     ''' Assuming the state x(t) evolves in time according to a linear dynamic:
             dx(t)/dt = H * x(t)
@@ -90,17 +170,20 @@ def compute_weighted_quadratic_state_integral_ALDS(H, x0, T, Q, Q_inv=None, dt=N
         where the matrix Q must be full rank.
     '''
     if(dt is None):
+        # this doesn't work yet
+        assert(False)
+        
         if(Q_inv is None):
             Q_inv = np.linalg.inv(Q)
         H_bar = Q * H * Q_inv
         y0 = Q*x0
         return compute_quadratic_state_integral_ALDS(H_bar, y0, T)
 
-    if(Q_inv is None):
-        Q_inv = np.linalg.inv(Q)
-    H_bar = Q * H * Q_inv
-    y0 = Q*x0
-    return compute_quadratic_state_integral_ALDS(H_bar, y0, T, dt)
+#    if(Q_inv is None):
+#        Q_inv = np.linalg.inv(Q)
+#    H_bar = Q * H * Q_inv
+#    y0 = Q*x0
+#    return compute_quadratic_state_integral_ALDS(H_bar, y0, T, dt)
         
     N = int(T/dt)
     x = simulate_ALDS(H, x0, dt, N)
@@ -112,6 +195,27 @@ def compute_weighted_quadratic_state_integral_ALDS(H, x0, T, Q, Q_inv=None, dt=N
             cost += dt*(x[:,i].T * Q2 * x[:,i])[0,0]
         elif(not not_finite_warning_printed):
             print 'WARNING: x is not finite at time step %d'%(i) #, x[:,i].T
+            not_finite_warning_printed = True
+    return cost
+    
+def compute_weighted_quadratic_state_control_integral_ALDS(A, B, K, x0, T, Q, R, dt):
+    ''' Assuming the state x(t) evolves in time according to a linear dynamic:
+            dx(t)/dt = A * x(t) + B * u(t)
+            u(t) = -K * x(t)
+        Compute the following integral:
+            int_{0}^{T} x(t)^T * Q^2 * x(t) + u(t)^T * R^2 * u(t) dt
+    '''        
+    N = int(T/dt)
+    (x,u) = simulate_LDS(A, B, K, x0, dt, N)
+    cost = 0.0
+    not_finite_warning_printed = False
+    Q2 = Q*Q
+    R2 = R*R
+    for i in range(N-1):
+        if(np.all(np.isfinite(x[:,i])) and np.all(np.isfinite(u[:,i]))):
+            cost += dt*(x[:,i].T * Q2 * x[:,i] + u[:,i].T * R2 * u[:,i])[0,0]
+        elif(not not_finite_warning_printed):
+            print 'WARNING: x or u is not finite at time step %d'%(i) #, x[:,i].T
             not_finite_warning_printed = True
     return cost
     
