@@ -1,209 +1,144 @@
 # -*- coding: utf-8 -*-
 """
-Script to find the gains for an admittance controller.
+Created on Tue Nov 27 09:54:42 2018
 
-Created on Thu Jul  5 14:41:32 2018
+Tune the gains for TSID-Admittance using LQR and saves the gains in binary files.
 
 @author: adelprete
 """
 
+#!/usr/bin/env python
+from __future__ import print_function
+
+import os
+import time
+import pickle
 import numpy as np
-import numpy.ma as ma
-from math import sqrt
-import matplotlib.pyplot as plt
-import matplotlib.colors as colors
+from numpy import matlib
 from numpy.linalg import eigvals
-from scipy.signal import place_poles
+import matplotlib.pyplot as plt
+import simple_biped.utils.plot_utils as plut
 
-np.set_printoptions(precision=2, linewidth=200)
- 
-def compute_integrator_dynamics(K):
-    ''' Compute the matrices associated to an n-th order continuous time integrator.
-        The form of the dynamics is: 
-            dx = A*x + B*u
-        The control law is a linear state feedback:
-            u = -K*x
-        Input parameters:
-            K : n-dimensional vector of feedback gains
-        Returns a tuple containing the following elements:
-            H: closed-loop dynamics matrix (A-B*K)
-            A: state transition matrix
-            B: control input matrix
-    '''
-    n = K.shape[0]
-    H = np.zeros((n,n))
-    A = np.zeros((n,n))
-    B = np.zeros((n,1))    
-    H[-1,:] = -K
-    B[-1,0] = 1.0
-    for i in range(n-1):
-        H[i,i+1] = 1.0
-        A[i,i+1] = 1.0
-#    print "H\n", H, "A\n", A, "B\n", B
-    return (H, A, B);
+from simple_biped.simu import Simu
+from simple_biped.utils.LDS_utils import simulate_ALDS, compute_integrator_dynamics, compute_weighted_quadratic_state_control_integral_ALDS, compute_integrator_gains
+from simple_biped.tsid_admittance import GainsTsidAdm
+from simple_biped.gain_tuning.tune_gains_tsid_adm_utils import convert_integrator_gains_to_tsid_adm_gains, convert_tsid_adm_gains_to_integrator_gains
+import controlpy
 
+import simple_biped.gain_tuning.tsid_adm_tuning_conf as conf
 
-def compute_integrator_dynamics_dt(K, dt):
-    dt2 = dt*dt/2.0
-    dt3 = dt*dt2/3.0
-    dt4 = dt*dt3/4.0
-    A = np.array( [[1,        dt,      dt2,     dt3],
-                   [0,         1,       dt,     dt2],
-                   [0,         0,        1,      dt],
-                   [0,         0,        0,       1]])
-    B = np.array([[dt4, dt3, dt2, dt]]).T
-    H = A - np.outer(B,K)
-    return (H, A, B);
+DATA_DIR                = conf.DATA_DIR + conf.GAINS_DIR_NAME
+OUTPUT_DATA_FILE_NAME   = conf.GAINS_FILE_NAME # 'gains_adm_ctrl'
+SAVE_DATA               = 1
+LOAD_DATA               = 0 # if 1 it tries to load the gains from the specified binary file
+
+N           = int(conf.T_cost_function/conf.dt_cost_function)
+dt          = conf.dt_cost_function
+w_x         = conf.w_x
+w_dx        = conf.w_dx
+w_d2x       = conf.w_d2x
+w_d3x       = conf.w_d3x
+w_d4x_list  = conf.w_d4x_list
+x0          = conf.x0
+do_plots    = conf.do_plots         # if true it shows the plots
+
+K_contact = Simu.get_default_contact_stiffness()
+(H, A, B) = compute_integrator_dynamics(matlib.zeros((1,4)))
+Q = matlib.diagflat([w_x, w_dx, w_d2x, w_d3x])
+R = matlib.diagflat([1.0])
+
+if(LOAD_DATA):
+    try:
+        f = open(DATA_DIR+OUTPUT_DATA_FILE_NAME+'.pkl', 'rb')
+        optimal_gains = pickle.load(f)
+        f.close()
+    except:
+        print("Impossible to open file", DATA_DIR+OUTPUT_DATA_FILE_NAME+'.pkl')
+        LOAD_DATA = 0
+
+if(not LOAD_DATA):
+    optimal_gains = {}
     
-    
-def compute_integrator_gains(n, p1, dp, dt=None):
-    ''' Compute the feedback gains to get the specified poles of the closed-loop dynamics
-        n:  order of the integrator
-        p1: the first pole
-        dp: the distance between consecutive poles
-        dt: time step, if system is discrete time, None otherwise
-    '''
-    des_poles = np.array([p1+i*dp for i in range(n)])
-    if(dt is not None):
-        (H, A, B) = compute_integrator_dynamics_dt(np.zeros(n), dt)
-        des_poles = np.exp(des_poles*dt)
-    else:
-        (H, A, B) = compute_integrator_dynamics(np.zeros(n))
-    res = place_poles(A, B, des_poles)
-    des_gains = res.gain_matrix.squeeze()
-    return des_gains
+    start_time = time.time()
+    for w_d4x in w_d4x_list:
+        print("".center(100,'#'))
+        print("Tuning gains for w_ddf={}".format(w_d4x))
 
-
-def compute_tsid_adm_gains(gains_4th_order_system, K, dt, verbose=False):
-    (K1, K2, K3, K4) = gains_4th_order_system.tolist()
-    Kf = 100.0/K              # force feedback gain
-    Kd_adm = K4                 # contact point velocity gain
-    Kp_adm = K3 / (1+K*Kf)      # contact point position gain
-    Kd_com = K2 / (K*Kf*Kp_adm)    # CoM derivative gain
-    Kp_com = K1 / (K*Kf*Kp_adm)    # CoM position gain
-    
-    if(verbose):
-        (H, A, B) = compute_integrator_dynamics(gains_4th_order_system);
-        ei = eigvals(H);
-        print "\nEigenvalues corresponding to desired closed-loop gains of 4-th order system:\n", ei
-        if(dt is not None):
-            (H_dt, A, B) = compute_integrator_dynamics(gains_4th_order_system, dt);
-            ei_dt = eigvals(H_dt);
-            print "\nEigenvalues of discrete-time closed-loop system:\n", ei_dt
-        print "\nCorresponding gains for admittance control:"
-        for gain in ['Kf', 'Kp_adm', 'Kd_adm', 'Kp_com', 'Kd_com']:
-            print gain+' =', locals()[gain]
-    return (Kp_adm, Kd_adm, Kp_com, Kd_com, Kf)
-
-def compute_adm_ctrl_vel_gains(gains_3rd_order_integrator, K, dt, verbose=False):
-    from robot_model_path import pkg, urdf 
-    from hrp2_reduced import Hrp2Reduced
-    import pinocchio as se3
-    from numpy import matlib
-
-    robot = Hrp2Reduced(urdf,[pkg],loadModel=1, useViewer=0)
-    q = robot.q0.copy()
-    v = matlib.zeros((robot.model.nv,1))
-    se3.computeAllTerms(robot.model,robot.data,q,v)
-    se3.framesKinematics(robot.model,robot.data,q)
-    M = robot.data.M        #(7,7)
-    Mj = robot.data.M[3:,3:]        #(7,7)
-    Minv = np.linalg.inv(M)
-    Jl,Jr = robot.get_Jl_Jr_world(q, False)
-    J = np.vstack([Jl[1:3],Jr[1:3]])    # (4, 7)
-    Upsilon = J*Minv*J.T
-    K_Upsilon = np.diag(K*Upsilon)
-    
-    print "Upsilon=", np.diag(Upsilon)
-    print "K*Upsilon=", K_Upsilon
-    
-    (K1, K2, K3) = gains_3rd_order_integrator.tolist()
-    Kd_j = K3 * np.diag(np.diag(Mj))      # contact point position gain
-    Kp_j = (K2 - np.mean(K_Upsilon))*np.diag(np.diag(Mj))    # CoM derivative gain
-    Kf   = (K2 - np.diag(K_Upsilon))*np.linalg.inv(K)*K1
-    
-    if(verbose):
-        (H, A, B) = compute_integrator_dynamics(gains_3rd_order_integrator);
-        ei = eigvals(H);
-        print "\nEigenvalues corresponding to desired closed-loop gains of 3-rd order system:\n", ei
-        if(dt is not None):
-            (H_dt, A, B) = compute_integrator_dynamics(gains_3rd_order_integrator, dt);
-            ei_dt = eigvals(H_dt);
-            print "\nEigenvalues of discrete-time closed-loop system:\n", ei_dt
-        print "\nCorresponding gains for admittance control:"
-        for gain in ['Kf', 'Kp_j', 'Kd_j']:
-            print gain+' = np.matrix(np.diag(', np.diag(locals()[gain]), '))'
-    return (Kf, Kp_j, Kd_j)
-
-def compute_stats_force_damping_factor(p1_bounds, dp_bounds, dt, N_p, N_dp, log_space):
-    if(log_space):
-        p1 = np.logspace(np.log10(p1_bounds[0]), np.log10(p1_bounds[1]), N_p)
-        dp = np.logspace(np.log10(dp_bounds[0]), np.log10(dp_bounds[1]), N_dp)
-    else:
-        p1 = np.linspace(p1_bounds[0], p1_bounds[1], N_p)
-        dp = np.linspace(dp_bounds[0], dp_bounds[1], N_dp)
-    P1,DP = np.meshgrid(p1, dp)
-    damp_fact = np.empty((N_p, N_dp))
-    for i in range(N_p):
-        for j in range(N_dp):
-            gains_4th_order_system = compute_integrator_gains(4, P1[i,j], DP[i,j], dt)
-            (K1, K2, K3, K4) = gains_4th_order_system.tolist()
-            damp_fact[i,j] = 0.5*K4/sqrt(K3)
-    
-    # mask nan
-    damp_fact = ma.masked_invalid(damp_fact)
-        
-    # plot using different scales
-    plot_scales = [('lin', 'lin')]
-    for ps in plot_scales:
-        fig = plt.figure(figsize = (12,8))
-        fig.subplots_adjust(wspace=0.3)
-        if(ps[0]=='log'):
-            # use log scale for color map
-            plt.pcolormesh(-P1, -DP, damp_fact, cmap=plt.cm.get_cmap('Blues'),
-                           norm=colors.LogNorm(vmin=damp_fact.min(), vmax=damp_fact.max()))
+        if(w_d4x<1.0):
+            R[0,0] = w_d4x
+            gains_4th_order_system, X, closedLoopEigVals = controlpy.synthesis.controller_lqr(A,B,Q,R)
         else:
-            plt.pcolormesh(-P1, -DP, damp_fact, cmap=plt.cm.get_cmap('Blues'))
-        plt.colorbar()
+            # TEMP
+            p1, dp =-5.0, -w_d4x
+            gains_4th_order_system = compute_integrator_gains(4, p1, dp)
+            #END TEMP
         
-        # draw a red cross over optimal point
-        i = np.unravel_index(np.argmin(damp_fact), damp_fact.shape)
-        plt.plot(-P1[i], -DP[i], 'ro', markersize=12)
+        tmp = convert_integrator_gains_to_tsid_adm_gains(gains_4th_order_system, K_contact)
+        optimal_gains[w_d4x] = tmp.to_array()
         
-        plt.xlabel('p1')
-        plt.ylabel('dp')
-        plt.title('Damping Factor')
-        if(ps[1]=='log'):
-            plt.xscale('log')
-            plt.yscale('log')
+        print("Optimal gains:\n", tmp.to_string())
+    
+    print("Total time taken to optimize gains", time.time()-start_time)
+    
+    if(SAVE_DATA):
+        print("Save results in", DATA_DIR + OUTPUT_DATA_FILE_NAME+'.pkl')
+        try:
+            os.makedirs(DATA_DIR);
+        except OSError:
+            print("Directory already exists.")
             
+        with open(DATA_DIR + OUTPUT_DATA_FILE_NAME+'.pkl', 'wb') as f:
+            pickle.dump(optimal_gains, f, pickle.HIGHEST_PROTOCOL)
+        
+        for w_d4x in w_d4x_list:
+            with open(DATA_DIR + conf.get_gains_file_name(w_d4x), 'wb') as f:
+                np.save(f, optimal_gains[w_d4x])
+            
+
+# SETUP
+ny          = conf.ny
+Q_pos_sqrt  = np.sqrt(conf.Q_pos)
+R_pos_sqrt  = np.sqrt(conf.R_pos)
+Q_d4x_sqrt  = np.sqrt(conf.Q_d4x)
+R_d4x_sqrt  = np.sqrt(conf.R_d4x)
+Q_sqrt      = np.sqrt(conf.Q_pos)
+R_sqrt      = matlib.zeros((ny,ny))
+T           = conf.T_cost_function
+optimal_cost_pos = {}
+optimal_cost_d4x = {}
+keys_sorted = optimal_gains.keys()
+keys_sorted.sort()
+
+for w_d4x in keys_sorted:
+    gains = GainsTsidAdm(optimal_gains[w_d4x])
+    K = convert_tsid_adm_gains_to_integrator_gains(gains, K_contact)
+
+    R_sqrt[0,0] = np.sqrt(w_d4x)    
+    optimal_cost               = compute_weighted_quadratic_state_control_integral_ALDS(A, B, K, x0, T, Q_sqrt, R_sqrt, dt)
+    optimal_cost_pos[w_d4x]    = compute_weighted_quadratic_state_control_integral_ALDS(A, B, K, x0, T, Q_pos_sqrt, R_pos_sqrt, dt)
+    optimal_cost_d4x[w_d4x]    = compute_weighted_quadratic_state_control_integral_ALDS(A, B, K, x0, T, Q_d4x_sqrt, R_d4x_sqrt, dt)
+
+    H = A - B*K  # closed-loop transition matrix    
+    print("".center(100,'#'))
+    print("w_d4x={}".format(w_d4x))
+    print("Optimal cost     {}".format(optimal_cost))
+    print("Optimal cost pos {}".format(optimal_cost_pos[w_d4x]))
+    print("Optimal cost ddf {}".format(optimal_cost_d4x[w_d4x]))
+    print("Largest eigenvalues:", np.sort_complex(eigvals(H))[-4:].T)
+    
+    if(do_plots):
+        simulate_ALDS(H, x0, dt, N, 1, 0)
+        plt.title("log(w_d4x)=%.1f"%(np.log10(w_d4x)))
+
+plt.figure()
+for w_d4x in keys_sorted:
+    plt.plot(optimal_cost_pos[w_d4x], optimal_cost_d4x[w_d4x], ' *', markersize=30, label='w_d4x='+str(w_d4x))
+plt.legend()
+plt.xscale('log')
+plt.yscale('log')
+plt.xlabel('Position tracking cost')
+plt.ylabel('Force acceleration cost')
+plt.grid(True);
+
+if(do_plots):    
     plt.show()
-    return (P1, DP, damp_fact)
-    
-    
-# INPUT PARAMETERS
-TUNE_TSID_ADM = 0
-TUNE_ADM_CTRL_VEL = 1
-verbose = 1
-Ky = 23770.
-Kz = 239018.
-
-if(TUNE_TSID_ADM):
-    print "\n\n******************************************************"
-    print     "            TUNING TSID-ADMITTANCE GAINS"
-    print     "******************************************************"
-    dt, p1, dp, K = None, -5.0, -10.0, 23770.    
-    if('des_gains' not in locals()):
-        gains_4th_order_system = compute_integrator_gains(4, p1, dp, dt)
-        print "Desired gains:", gains_4th_order_system    
-    (Kp_adm, Kd_adm, Kp_com, Kd_com, Kf) = compute_tsid_adm_gains(gains_4th_order_system, K, dt, verbose)
-    #(P1, DP, damp_fact) = compute_stats_force_damping_factor(p1_bounds=[-5, -50], dp_bounds=[-0.1, -10], dt=dt, N_p=20, N_dp=20, log_space=False)
-
-if(TUNE_ADM_CTRL_VEL):
-    print "\n\n******************************************************"
-    print     "      TUNING ADMITTANCE CONTROL (VELOCITY) GAINS      "
-    print     "******************************************************"
-    dt, p1, dp, K = None, -40.0, -20.0, np.diagflat([Ky,Kz,Ky,Kz]) 
-    gains_3rd_order_integrator = compute_integrator_gains(3, p1, dp, dt)
-    print "Desired gains:", gains_3rd_order_integrator    
-    compute_adm_ctrl_vel_gains(gains_3rd_order_integrator, K, dt, verbose=1)
