@@ -46,12 +46,17 @@ def traj_norm(x):
     
 def finite_diff(data, dt, set_last_element_to_nan=True):
     fd = np.asarray(data).copy()
-#    fd[0] = 0.
-#    fd[1:,] -= np.asarray(data[:-1])
-    fd[:-1,] = fd[1:,] - np.asarray(data[:-1])
+    if len(fd.shape)==1:
+        fd[:-1,] = fd[1:,] - np.asarray(data[:-1])
+        fd = fd *(1/dt)
+        if(set_last_element_to_nan):    fd[-1] = np.nan # just ignore the last points for display
+        else:                           fd[-1] = fd[-2]
+        return fd
+    
+    fd[:, :-1] = fd[:, 1:] - np.asarray(data[:, :-1])
     fd = fd *(1/dt)
-    if(set_last_element_to_nan):
-        fd[-1] = np.nan # just ignore the last points for display
+    if(set_last_element_to_nan):    fd[:,-1] = np.nan # just ignore the last points for display
+    else:                           fd[:,-1] = fd[:,-2]
     return fd
     
 
