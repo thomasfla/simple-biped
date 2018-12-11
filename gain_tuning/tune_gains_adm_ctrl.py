@@ -19,6 +19,7 @@ import time
 import pickle
 import numpy as np
 from numpy import matlib
+from numpy.linalg import eigvals
 import matplotlib.pyplot as plt
 import simple_biped.utils.plot_utils as plut
 
@@ -29,24 +30,29 @@ from simple_biped.gain_tuning.genetic_tuning import optimize_gains_adm_ctrl, Gai
 from simple_biped.hrp2_reduced import Hrp2Reduced
 from simple_biped.robot_model_path import pkg, urdf 
 
-DATA_DIR                = os.getcwd()+'/../data/gains/'
-OUTPUT_DATA_FILE_NAME   = 'gains_adm_ctrl'
-SAVE_DATA               = 1
-LOAD_DATA               = 1 # if 1 it tries to load the gains from the specified binary file
+import simple_biped.gain_tuning.adm_ctrl_tuning_conf as conf
 
-controller  = 'adm_ctrl'
-N           = 400
-dt          = 1e-2
-w_x         = 1.0
-w_dx        = 0.0
-w_f         = 0.0
-w_df        = 0.0
-w_ddf_list  = [1e-10, 1e-9, 1e-8, 1e-7, 1e-6] #[1e-11, 1e-10, 1e-9, 1e-8, 1e-7, 1e-6]
-max_iter    = 1
-do_plots    = 1
+DATA_DIR                = conf.DATA_DIR + conf.GAINS_DIR_NAME
+OUTPUT_DATA_FILE_NAME   = conf.GAINS_FILE_NAME # 'gains_adm_ctrl'
+SAVE_DATA               = 1
+LOAD_DATA               = 0 # if 1 it tries to load the gains from the specified binary file
+
+N           = int(conf.T_genetic/conf.dt_genetic)
+dt          = conf.dt_genetic
+w_x         = conf.w_x
+w_dx        = conf.w_dx
+w_f         = conf.w_f
+w_df        = conf.w_df
+w_ddf_list  = conf.w_ddf_list
+ny          = conf.ny
+nf          = conf.nf
+x0          = conf.x0
+max_iter    = conf.max_iter        # max number of iteration of genetic algorithm
+do_plots    = conf.do_plots         # if true it shows the plots
 
 K = Simu.get_default_contact_stiffness()
 initial_gains = GainsAdmCtrl.get_default_gains(K)
+initial_guess = initial_gains.to_array()
 print("Initial gains:\n", initial_gains.to_string())
 
 if(LOAD_DATA):
@@ -60,37 +66,42 @@ if(LOAD_DATA):
 
 if(not LOAD_DATA):
     optimal_gains = {}
+    start_time = time.time()
     for w_ddf in w_ddf_list:
         print("".center(100,'#'))
         print("Tuning gains for w_ddf={}".format(w_ddf))
-        optimal_gains[w_ddf] = optimize_gains_adm_ctrl(w_x, w_dx, w_f, w_df, w_ddf, N, dt, max_iter, do_plots=0)
+        optimal_gains[w_ddf] = optimize_gains_adm_ctrl(w_x, w_dx, w_f, w_df, w_ddf, N, dt, max_iter, x0, initial_guess, do_plots=0)
+        
+        # update initial guess
+        initial_guess = optimal_gains[w_ddf]
         print("Optimal gains:\n", GainsAdmCtrl(optimal_gains[w_ddf]).to_string())
+    
+    print("Total time taken to optimize gains", time.time()-start_time)
     
     if(SAVE_DATA):
         print("Save results in", DATA_DIR + OUTPUT_DATA_FILE_NAME+'.pkl')
+        try:
+            os.makedirs(DATA_DIR);
+        except OSError:
+            print("Directory already exists.")
+            
         with open(DATA_DIR + OUTPUT_DATA_FILE_NAME+'.pkl', 'wb') as f:
             pickle.dump(optimal_gains, f, pickle.HIGHEST_PROTOCOL)
         
         for w_ddf in w_ddf_list:
-            with open(DATA_DIR + OUTPUT_DATA_FILE_NAME+'_w_ddf='+str(w_ddf)+'.npy', 'wb') as f:
+            with open(DATA_DIR + conf.get_gains_file_name(w_ddf), 'wb') as f:
                 np.save(f, optimal_gains[w_ddf])
             
-ny = 3
-nf = 4
-ss = 3*nf+2*ny
-x0 = matlib.zeros((ss,1))
-x0[0,0] = 1.0
 
 # SETUP
 robot   = Hrp2Reduced(urdf, [pkg], loadModel=0, useViewer=0)
 q       = robot.q0.copy()
 v       = matlib.zeros((robot.model.nv,1))
 
-Q       = matlib.diagflat(np.matrix(ny*[w_x] + ny*[w_dx] + nf*[w_f] + nf*[w_df] + nf*[w_ddf_list[0]]))
-Q_pos   = matlib.diagflat(np.matrix(ny*[w_x] + ny*[w_dx] + nf*[w_f] + nf*[w_df] + nf*[0.0]))
-Q_ddf   = matlib.diagflat(np.matrix(ny*[0.0] + ny*[w_dx] + nf*[w_f] + nf*[w_df] + nf*[w_ddf_list[0]]))
+Q_pos   = conf.Q_pos #matlib.diagflat(np.matrix(ny*[w_x] + ny*[w_dx] + nf*[w_f] + nf*[w_df] + nf*[0.0]))
+Q_ddf   = conf.Q_ddf #matlib.diagflat(np.matrix(ny*[0.0] + ny*[w_dx] + nf*[w_f] + nf*[w_df] + nf*[1.0]))
 
-gain_optimizer = GainOptimizeAdmCtrl(robot, q, v, K, ny, nf, initial_gains.to_array(), dt, x0, N, Q)
+gain_optimizer = GainOptimizeAdmCtrl(robot, q, v, K, ny, nf, initial_gains.to_array(), dt, x0, N, Q_pos)
 normalized_initial_gains = matlib.ones_like(initial_gains.to_array())
 gain_optimizer.set_cost_function_matrix(Q_pos)
 initial_cost_pos    = gain_optimizer.cost_function(normalized_initial_gains)
@@ -100,11 +111,13 @@ initial_cost_ddf    = gain_optimizer.cost_function(normalized_initial_gains)
 if(do_plots):
     H = gain_optimizer.compute_transition_matrix(initial_gains.to_array());
     simulate_ALDS(H, x0, dt, N, 1, 0)
-    plt.title("Reponse with initial gains")
+    plt.title("Initial gains")
 
 optimal_cost_pos = {}
 optimal_cost_ddf = {}
-for w_ddf in optimal_gains.keys():
+keys_sorted = optimal_gains.keys()
+keys_sorted.sort()
+for w_ddf in keys_sorted:
     gains = optimal_gains[w_ddf]
     normalized_opt_gains = gain_optimizer.normalize_gains_array(gains)
     
@@ -117,6 +130,7 @@ for w_ddf in optimal_gains.keys():
     gain_optimizer.set_cost_function_matrix(Q_ddf)
     optimal_cost_ddf[w_ddf]    = gain_optimizer.cost_function(normalized_opt_gains)
     
+    
     print("".center(100,'#'))
     print("w_ddf={}".format(w_ddf))
     print("Initial cost     {}".format(initial_cost))
@@ -125,16 +139,20 @@ for w_ddf in optimal_gains.keys():
     print("Optimal cost pos {}".format(optimal_cost_pos[w_ddf]))
     print("Initial cost ddf {}".format(initial_cost_ddf))
     print("Optimal cost ddf {}".format(optimal_cost_ddf[w_ddf]))
+
+    H = gain_optimizer.compute_transition_matrix(gains);
+    print("Largest eigenvalues:", np.sort_complex(eigvals(H))[-4:].T)
     
     if(do_plots):
-        H = gain_optimizer.compute_transition_matrix(gains);
         simulate_ALDS(H, x0, dt, N, 1, 0)
         plt.title("log(w_ddf)=%.1f"%(np.log10(w_ddf)))
 
 plt.figure()
-for w_ddf in optimal_gains.keys():
+for w_ddf in keys_sorted:
     plt.plot(optimal_cost_pos[w_ddf], optimal_cost_ddf[w_ddf], ' *', markersize=30, label='w_ddf='+str(w_ddf))
 plt.legend()
+plt.xscale('log')
+plt.yscale('log')
 plt.xlabel('Position tracking cost')
 plt.ylabel('Force acceleration cost')
 plt.grid(True);
