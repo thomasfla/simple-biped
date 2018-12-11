@@ -26,7 +26,7 @@ import simple_biped.utils.plot_utils as plut
 from simple_biped.admittance_ctrl import GainsAdmCtrl
 from simple_biped.simu import Simu
 from simple_biped.utils.LDS_utils import simulate_ALDS
-from simple_biped.gain_tuning.genetic_tuning import optimize_gains_adm_ctrl, GainOptimizeAdmCtrl
+from simple_biped.gain_tuning.genetic_tuning import optimize_gains_adm_ctrl, convert_cost_function, GainOptimizeAdmCtrl
 from simple_biped.hrp2_reduced import Hrp2Reduced
 from simple_biped.robot_model_path import pkg, urdf 
 
@@ -41,9 +41,9 @@ N           = int(conf.T_genetic/conf.dt_genetic)
 dt          = conf.dt_genetic
 w_x         = conf.w_x
 w_dx        = conf.w_dx
-w_f         = conf.w_f
-w_df        = conf.w_df
-w_ddf_list  = conf.w_ddf_list
+w_d2x       = conf.w_d2x
+w_d3x       = conf.w_d3x
+w_d4x_list  = conf.w_d4x_list
 ny          = conf.ny
 nf          = conf.nf
 x0          = conf.x0
@@ -67,14 +67,15 @@ if(LOAD_DATA):
 if(not LOAD_DATA):
     optimal_gains = {}
     start_time = time.time()
-    for w_ddf in w_ddf_list:
+    for w_d4x in w_d4x_list:
         print("".center(100,'#'))
-        print("Tuning gains for w_ddf={}".format(w_ddf))
-        optimal_gains[w_ddf] = optimize_gains_adm_ctrl(w_x, w_dx, w_f, w_df, w_ddf, N, dt, max_iter, x0, initial_guess, do_plots=0)
+        print("Tuning gains for w_d4x={}".format(w_d4x))
+        Q = convert_cost_function(w_x, w_dx, w_d2x, w_d3x, w_d4x)
+        optimal_gains[w_d4x] = optimize_gains_adm_ctrl(Q, N, dt, max_iter, x0, initial_guess, do_plots=0)
         
         # update initial guess
-        initial_guess = optimal_gains[w_ddf]
-        print("Optimal gains:\n", GainsAdmCtrl(optimal_gains[w_ddf]).to_string())
+        initial_guess = optimal_gains[w_d4x]
+        print("Optimal gains:\n", GainsAdmCtrl(optimal_gains[w_d4x]).to_string())
     
     print("Total time taken to optimize gains", time.time()-start_time)
     
@@ -88,9 +89,9 @@ if(not LOAD_DATA):
         with open(DATA_DIR + OUTPUT_DATA_FILE_NAME+'.pkl', 'wb') as f:
             pickle.dump(optimal_gains, f, pickle.HIGHEST_PROTOCOL)
         
-        for w_ddf in w_ddf_list:
-            with open(DATA_DIR + conf.get_gains_file_name(w_ddf), 'wb') as f:
-                np.save(f, optimal_gains[w_ddf])
+        for w_d4x in w_d4x_list:
+            with open(DATA_DIR + conf.get_gains_file_name(w_d4x), 'wb') as f:
+                np.save(f, optimal_gains[w_d4x])
             
 
 # SETUP
@@ -98,8 +99,8 @@ robot   = Hrp2Reduced(urdf, [pkg], loadModel=0, useViewer=0)
 q       = robot.q0.copy()
 v       = matlib.zeros((robot.model.nv,1))
 
-Q_pos   = conf.Q_pos #matlib.diagflat(np.matrix(ny*[w_x] + ny*[w_dx] + nf*[w_f] + nf*[w_df] + nf*[0.0]))
-Q_ddf   = conf.Q_ddf #matlib.diagflat(np.matrix(ny*[0.0] + ny*[w_dx] + nf*[w_f] + nf*[w_df] + nf*[1.0]))
+Q_pos   = convert_cost_function(w_x, w_dx, w_d2x, w_d3x, 0.0)
+Q_ddf   = convert_cost_function(0.0, 0.0, 0.0, 0.0, 1.0)
 
 gain_optimizer = GainOptimizeAdmCtrl(robot, q, v, K, ny, nf, initial_gains.to_array(), dt, x0, N, Q_pos)
 normalized_initial_gains = matlib.ones_like(initial_gains.to_array())
@@ -117,39 +118,41 @@ optimal_cost_pos = {}
 optimal_cost_ddf = {}
 keys_sorted = optimal_gains.keys()
 keys_sorted.sort()
-for w_ddf in keys_sorted:
-    gains = optimal_gains[w_ddf]
+print("Initial cost pos {}".format(initial_cost_pos))
+print("Initial cost ddf {}".format(initial_cost_ddf))
+
+for w_d4x in keys_sorted:
+    gains = optimal_gains[w_d4x]
     normalized_opt_gains = gain_optimizer.normalize_gains_array(gains)
     
-    Q       = matlib.diagflat(np.matrix(ny*[w_x] + ny*[w_dx] + nf*[w_f] + nf*[w_df] + nf*[w_ddf]))
-    gain_optimizer.set_cost_function_matrix(Q)
-    initial_cost    = gain_optimizer.cost_function(normalized_initial_gains)
-    optimal_cost    = gain_optimizer.cost_function(normalized_opt_gains)
+#    Q = convert_cost_function(w_x, w_dx, w_d2x, w_d3x, w_d4x)
+#    gain_optimizer.set_cost_function_matrix(Q)
+#    initial_cost    = gain_optimizer.cost_function(normalized_initial_gains)
+#    optimal_cost    = gain_optimizer.cost_function(normalized_opt_gains)
     gain_optimizer.set_cost_function_matrix(Q_pos)
-    optimal_cost_pos[w_ddf]    = gain_optimizer.cost_function(normalized_opt_gains)
+    optimal_cost_pos[w_d4x]    = gain_optimizer.cost_function(normalized_opt_gains)
     gain_optimizer.set_cost_function_matrix(Q_ddf)
-    optimal_cost_ddf[w_ddf]    = gain_optimizer.cost_function(normalized_opt_gains)
+    optimal_cost_ddf[w_d4x]    = gain_optimizer.cost_function(normalized_opt_gains)
     
     
     print("".center(100,'#'))
-    print("w_ddf={}".format(w_ddf))
-    print("Initial cost     {}".format(initial_cost))
-    print("Optimal cost     {}".format(optimal_cost))
-    print("Initial cost pos {}".format(initial_cost_pos))
-    print("Optimal cost pos {}".format(optimal_cost_pos[w_ddf]))
-    print("Initial cost ddf {}".format(initial_cost_ddf))
-    print("Optimal cost ddf {}".format(optimal_cost_ddf[w_ddf]))
+    print("w_d4x={}".format(w_d4x))
+#    print("Initial cost     {}".format(initial_cost))
+    
+#    print("Optimal cost     {}".format(optimal_cost))    
+    print("Optimal cost pos {}".format(optimal_cost_pos[w_d4x]))    
+    print("Optimal cost ddf {}".format(optimal_cost_ddf[w_d4x]))
 
     H = gain_optimizer.compute_transition_matrix(gains);
     print("Largest eigenvalues:", np.sort_complex(eigvals(H))[-4:].T)
     
     if(do_plots):
         simulate_ALDS(H, x0, dt, N, 1, 0)
-        plt.title("log(w_ddf)=%.1f"%(np.log10(w_ddf)))
+        plt.title("log(w_d4x)=%.1f"%(np.log10(w_d4x)))
 
 plt.figure()
-for w_ddf in keys_sorted:
-    plt.plot(optimal_cost_pos[w_ddf], optimal_cost_ddf[w_ddf], ' *', markersize=30, label='w_ddf='+str(w_ddf))
+for w_d4x in keys_sorted:
+    plt.plot(optimal_cost_pos[w_d4x], optimal_cost_ddf[w_d4x], ' *', markersize=30, label='w_d4x=%.1e'%(w_d4x))
 plt.legend()
 plt.xscale('log')
 plt.yscale('log')

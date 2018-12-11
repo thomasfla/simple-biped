@@ -14,11 +14,11 @@ import os
 import numpy as np
 from numpy import matlib
 
-def get_test_name(ctrl, zeta, f_dist, w_ddf):
-    return ctrl + '_zeta_'+str(zeta)+'_fDist_'+str(f_dist)+'_w_ddf_'+str(w_ddf)
+def get_test_name(ctrl, zeta, f_dist, w_d4x):
+    return ctrl + '_zeta_'+str(zeta)+'_fDist_'+str(f_dist)+'_w_d4x_'+str(w_d4x)
     
-def get_gains_file_name(w_ddf):
-    return GAINS_FILE_NAME+'_w_ddf='+str(w_ddf)+'.npy'
+def get_gains_file_name(w_d4x):
+    return GAINS_FILE_NAME+'_w_d4x='+str(w_d4x)+'.npy'
     
 DATA_DIR                = str(os.path.dirname(os.path.abspath(__file__)))+'/../data/'
 GAINS_DIR_NAME          = 'gains/'
@@ -37,18 +37,24 @@ mu                  = 0.3
 T_DISTURB_BEGIN     = 0.11
 
 w_x         = 1.0
-w_dx        = 0.0
-w_f         = 0.0
-w_df        = 0.0
-w_ddf_list  = np.logspace(-16.0, -9.0, num=8)
+#w_dx        = 0.0
+#w_f         = 0.0
+#w_df        = 0.0
+#w_ddf_list  = np.logspace(-16.0, -9.0, num=8)
+w_x         = 1.0
+w_dx        = 1e-1 #0.0
+w_d2x       = 1e-3
+w_d3x       = 1e-6
+w_d4x_list  = np.logspace(-12.0, -7.0, num=6)
+w_d4x_list  = np.logspace(-7.0, -12.0, num=6)
 
 ny          = 3
 nf          = 4
 x0          = matlib.zeros((3*nf+2*ny,1))
 x0[ny,0]    = .0765     # initial CoM velocity in Y direction
 
-max_iter    = 100        # max number of iterations of genetic algorithm
-do_plots    = 0
+max_iter    = 5        # max number of iterations of genetic algorithm
+do_plots    = 1
 
-Q_pos       = matlib.diagflat(np.matrix([w_x,w_x,0.] + ny*[0.] + nf*[0.] + nf*[0.] + nf*[0.0]))
-Q_ddf       = matlib.diagflat(np.matrix(ny*[0.0]     + ny*[0.] + nf*[0.] + nf*[0.] + nf*[1.0]))
+#Q_pos       = matlib.diagflat(np.matrix([w_x,w_x,0.] + ny*[0.] + nf*[0.] + nf*[0.] + nf*[0.0]))
+#Q_ddf       = matlib.diagflat(np.matrix(ny*[0.0]     + ny*[0.] + nf*[0.] + nf*[0.] + nf*[1.0]))
