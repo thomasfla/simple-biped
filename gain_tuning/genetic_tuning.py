@@ -33,7 +33,7 @@ class GainOptimizer(object):
         self.nit = 0
     
     def callback(self, x, f, accept):
-        print "%4d) Cost: %10.3f; Accept %d Gains:"%(self.nit, f, accept), x
+        print "%4d) Cost: %10f; Accept %d Gains:"%(self.nit, f, accept), x
         self.nit += 1;
 
     def optimize_gains(self, gains, cost_function, niter=100, verbose=0):
@@ -159,28 +159,31 @@ class GainOptimizeAdmCtrl(GainOptimizer):
         
         return opt_gains
     
-def optimize_gains_adm_ctrl(w_x, w_dx, w_f, w_df, w_ddf, N, dt, max_iter, do_plots=0):
+def optimize_gains_adm_ctrl(w_x, w_dx, w_f, w_df, w_ddf, N, dt, max_iter, x0=None, initial_guess=None, do_plots=0):
     # User parameters
     PROFILE_ON = 0
     ny = 3
     nf = 4
     ss = 3*nf+2*ny
-    x0 = matlib.zeros((ss,1))
-    x0[0,0] = 1.0
+    if x0 is None:
+        x0 = matlib.zeros((ss,1))
+        x0[0,0] = 1.0
     
     # SETUP
     robot   = Hrp2Reduced(urdf, [pkg], loadModel=0, useViewer=0)
     q       = robot.q0.copy()
     v       = zero(robot.model.nv)
     K       = Simu.get_default_contact_stiffness()
-    gains   = GainsAdmCtrl.get_default_gains(K)
     Q_diag  = np.matrix(ny*[w_x] + ny*[w_dx] + nf*[w_f] + nf*[w_df] + nf*[w_ddf])
     Q       = matlib.diagflat(Q_diag)
     
-    gain_optimizer = GainOptimizeAdmCtrl(robot, q, v, K, ny, nf, gains.to_array(), dt, x0, N, Q)
+    if(initial_guess is None):
+        initial_guess   = GainsAdmCtrl.get_default_gains(K).to_array()
+    
+    gain_optimizer = GainOptimizeAdmCtrl(robot, q, v, K, ny, nf, initial_guess, dt, x0, N, Q)
     
     if(do_plots):
-        H = gain_optimizer.compute_transition_matrix(gains.to_array());
+        H = gain_optimizer.compute_transition_matrix(initial_guess);
         simulate_ALDS(H, x0, dt, N, 1)
     # OPTIMIZE GAINS
     
