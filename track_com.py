@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import utils.plot_utils as plut
 from utils.plot_utils import plot_from_logger
 from tsid import Tsid
-from tsid_admittance import TsidAdmittance
+from tsid_admittance import TsidAdmittance, GainsTsidAdm
 from admittance_ctrl import AdmittanceControl, GainsAdmCtrl
 
 from tsid_flexible_contacts import TsidFlexibleContact
@@ -52,7 +52,7 @@ def com_traj(t, c_init, c_final, T):
     return (np.matrix([[py ],[pz]]), np.matrix([[vy ],[vz]]), 
             np.matrix([[ay ],[az]]), np.matrix([[jy ],[jz]]), np.matrix([[sy ],[sz]]))
     
-CONTROLLER = 'adm_ctrl'             # either 'tsid_rigid' or 'tsid_flex' or 'tsid_adm' or 'tsid_mistry' or 'adm_ctrl'
+CONTROLLER = 'tsid_adm'             # either 'tsid_rigid' or 'tsid_flex' or 'tsid_adm' or 'tsid_mistry' or 'adm_ctrl'
 F_DISTURB = np.matrix([4e2, 0, 0]).T
 COM_SIN_AMP = np.array([0.0, 0.0])
 ZETA = .3   # with zeta=0.03 and ndt=100 it is unstable
@@ -83,7 +83,7 @@ simulation_time = 2.0
 USE_ESTIMATOR = 0              # use real state for controller feedback
 T_DISTURB_BEGIN = 0.10          # Time at which the disturbance starts
 T_DISTURB_END   = 0.11          # Time at which the disturbance ends
-gain_file = None
+gain_file = None #'/is/am/adelprete/repos/simple_biped/gain_tuning/../data/gains/gains_tsid_adm_w_d4x=1e-09.npy'
 test_name = None
 
 INPUT_PARAMS = ['controller=', 'com_sin_amp=', 'f_dist=', 'zeta=', 'use_estimator=', 'T=', 'k=', 'gain_file=', 'test_name=']
@@ -131,14 +131,14 @@ print "\n"
      
 if(test_name is None):
     date_time = datetime.datetime.now().strftime('%Y%m%d_%H%M%S');
-    test_name = data_time+'_'+CONTROLLER + '_zeta_'+str(ZETA) + '_k_'+str(k)
+    test_name = date_time+'_'+CONTROLLER + '_zeta_'+str(ZETA) + '_k_'+str(k)
     if(COM_SIN_AMP[0]!=0.0):
         test_name += '_comSinAmp_'+str(COM_SIN_AMP[0])
     if(F_DISTURB[0,0]!=0.0):
         test_name += '_fDist_'+str(F_DISTURB[0,0])
     
 if(SAVE_DATA):
-    RESULTS_PATH = os.getcwd()+'/data/'+test_name+'/'
+    RESULTS_PATH = str(os.path.dirname(os.path.abspath(__file__)))+'/data/'+test_name+'/'
     print "Gonna save results in folder:", RESULTS_PATH
     try:
         os.makedirs(RESULTS_PATH);
@@ -235,22 +235,12 @@ elif(CONTROLLER=='tsid_rigid'):
     w_force = 1e-4
     tsid = Tsid(robot, Ky, Kz, w_post, w_force, Kp_post, Kp_com, centroidalEstimator)
 elif(CONTROLLER=='tsid_adm'):
-    Kf = np.matrix(np.diagflat([1.0/Ky, 1.0/Kz, 1.0/Ky, 1.0/Kz]))   # Stiffness of the feet spring
-#    Kp_adm, Kd_adm, Kp_com, Kd_com = 1676.95962612, 96.8316038567, 136.153307873, 28.4344837195 # poles 10, 20, 30, 40
-#    Kp_adm, Kd_adm, Kp_com, Kd_com = 1038.29702511, 77.9184247381, 60.731488824, 20.3902792501  # poles 5, 15, 25, 35
-#    Kp_adm, Kd_adm, Kp_com, Kd_com, Kf = 188.781277292, 77.9184247381, 33.4023188532, 11.2146535876, 10*Kf # poles 5, 15, 25, 35
-    Kp_adm, Kd_adm, Kp_com, Kd_com, Kf = 20.5603371308, 77.9184247381, 30.6694018561, 10.2970910213, 100*Kf # poles 5, 15, 25, 35
-    tsid = TsidAdmittance(robot, Ky, Kz, w_post, Kp_post, Kp_com, Kf, Kp_adm, Kd_adm, fMin, mu_ctrl, centroidalEstimator)
+    if(gains_array is None):    gains = GainsTsidAdm.get_default_gains(K)
+    else:                       gains = GainsTsidAdm(gains_array)
+    tsid = TsidAdmittance(robot, Ky, Kz, w_post, Kp_post, gains, fMin, mu_ctrl, centroidalEstimator)
 elif(CONTROLLER=='adm_ctrl'):
-    if(gains_array is None):
-        gains = GainsAdmCtrl.get_default_gains(K)
-        gains.Kp_com = 21.10436997498271
-        gains.Kd_com = 8.23474242150766
-        gains.kp_bar = 16600.214218073572
-        gains.kd_bar = 399.95938376411885
-        gains.Kf     = 1e-4*matlib.diagflat([20.251365813877367, 10.458093022034928, 20.37570634792638, 9.813268738594545])
-    else:
-        gains = GainsAdmCtrl(gains_array)
+    if(gains_array is None):    gains = GainsAdmCtrl.get_default_gains(K)
+    else:                       gains = GainsAdmCtrl(gains_array)
     
     Mj_diag = np.matrix(np.diag(np.diag(robot.data.M[3:,3:])))
     gains.Kp_pos = gains.kp_bar*Mj_diag
@@ -368,6 +358,7 @@ if PLOT_FORCES:
     labels += [['left',                'left des',       'right',               'right des']]
     linest += [['b', '--', 'r', '--']]
     ax = plot_from_logger(lgr, dt, fields, labels, 'Contact Forces', linest, ylabel=['Y [N]', 'Z [N]'])
+    plut.saveFigure('contact_forces')
 
     tt = np.arange(0.0, dt*log_size, dt)
     ax[0].plot(tt,  mu_simu*np.array(lgr.simu_lkf_1), 'b:', label='left bounds')
@@ -375,7 +366,7 @@ if PLOT_FORCES:
     ax[0].plot(tt,  mu_simu*np.array(lgr.simu_rkf_1), 'r:', label='right bounds')
     ax[0].plot(tt, -mu_simu*np.array(lgr.simu_rkf_1), 'r:') #, label='right min')
     ax[0].legend()
-    plut.saveFigure('contact_forces')
+    plut.saveFigure('contact_forces_with_friction_bounds')
 
 if(PLOT_FORCES and USE_ESTIMATOR):
     fields, labels, linest = [], [], []

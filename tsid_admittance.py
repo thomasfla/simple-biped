@@ -14,12 +14,60 @@ except ImportError:
 class Empty:
     pass
     
+    
+class GainsTsidAdm:
+    ''' Class collecting the gains of TSID-Admittance:
+        (Kp_adm, Kd_adm, Kp_com, Kd_com, Kf)
+    '''
+    
+    def __init__(self, gain_array=None, nf=4):
+        '''
+            gain_array: numpy array containing all the gains
+            nf:         number of force feedback gains
+        '''
+        self.nf = nf
+        if gain_array is None:
+            gain_array = np.zeros(4+nf)
+        self.from_array(gain_array)
+    
+    def to_array(self):
+        res = np.zeros(6+self.nf)
+        res[0] = self.Kp_adm
+        res[1] = self.Kd_adm
+        res[2] = self.Kp_com
+        res[3] = self.Kd_com
+        res[4:4+self.nf] = np.diag(self.Kf)
+        return res
+        
+    def from_array(self, gains):
+        self.Kp_adm = gains[0]
+        self.Kd_adm = gains[1]
+        self.Kp_com = gains[2]
+        self.Kd_com = gains[3]
+        self.Kf     = np.asmatrix(np.diag(gains[4:4+self.nf]))
+        
+    def to_string(self):
+        res = ''
+        for s in ['Kp_adm', 'Kd_adm', 'Kp_com', 'Kd_com']:
+            res += s+' = '+str(self.__dict__[s])+'\n'
+        res += 'Kf = 1e-4*np.diag('+str([v for v in 1e4*np.diag(self.Kf)])+')'
+        return res
+        
+    @staticmethod
+    def get_default_gains(K):
+        gains = GainsTsidAdm()
+        K_inv = np.linalg.inv(K)
+        # poles 5, 15, 25, 35
+        gains.Kp_adm, gains.Kd_adm, gains.Kp_com, gains.Kd_com, gains.Kf = 20.5603371308, 77.9184247381, 30.6694018561, 10.2970910213, 100*K_inv
+        return gains
+        
+        
 class TsidAdmittance:
     
     HESSIAN_REGULARIZATION = 1e-8
     NEGLECT_FRICTION_CONES = False
     
-    def __init__(self, robot, Ky, Kz, w_post, Kp_post, Kp_com, Kf, Kp_adm=400.0, Kd_adm=40.0, fMin=0.0, mu=0.3, estimator=None):
+    def __init__(self, robot, Ky, Kz, w_post, Kp_post, gains, fMin=0.0, mu=0.3, estimator=None):
         self.robot = robot
         self.estimator = estimator
         self.NQ = robot.model.nq
@@ -34,17 +82,17 @@ class TsidAdmittance:
         self.Kz = Kz
         self.Kspring = -np.matrix(np.diagflat([Ky,Kz,Ky,Kz]))   # Stiffness of the feet spring
         self.Kinv = np.linalg.inv(self.Kspring)
-        self.Kf = Kf #-self.Kinv
-        self.Kp_adm = Kp_adm
-        self.Kd_adm = Kd_adm
+        self.Kf = gains.Kf
+        self.Kp_adm = gains.Kp_adm
+        self.Kd_adm = gains.Kd_adm
         self.fMin = fMin
         self.mu = mu
         
         self.w_post = w_post
         self.Kp_post = Kp_post
         self.Kd_post = 2*sqrt(Kp_post)
-        self.Kp_com = Kp_com
-        self.Kd_com = 2*sqrt(Kp_com)
+        self.Kp_com = gains.Kp_com
+        self.Kd_com = gains.Kd_com
         self.data = Empty()
         com_p_ref = np.matrix([0.,0.53]).T
         com_v_ref = np.matrix([0.,0.]).T
