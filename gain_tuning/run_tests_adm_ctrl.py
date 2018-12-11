@@ -22,12 +22,12 @@ controllers     = conf.controllers
 f_dists         = conf.f_dists
 zetas           = conf.zetas
 T               = conf.T_simu
-w_ddf_list      = conf.w_ddf_list
+w_d4x_list      = conf.w_d4x_list
 
 processes = []
-for (ctrl, f_dist, zeta, w_ddf) in itertools.product(controllers, f_dists, zetas, w_ddf_list):
-    test_name = conf.TESTS_DIR_NAME + conf.get_test_name(ctrl, zeta, f_dist, w_ddf)
-    gains_file = conf.DATA_DIR + conf.GAINS_DIR_NAME + conf.get_gains_file_name(w_ddf)
+for (ctrl, f_dist, zeta, w_d4x) in itertools.product(controllers, f_dists, zetas, w_d4x_list):
+    test_name = conf.TESTS_DIR_NAME + conf.get_test_name(ctrl, zeta, f_dist, w_d4x)
+    gains_file = conf.DATA_DIR + conf.GAINS_DIR_NAME + conf.get_gains_file_name(w_d4x)
     
     cmd = ('python track_com.py --controller=%s --f_dist=%.1f --zeta=%.1f --T=%.1f --gain_file="%s" --test_name="%s"'%(
                                         ctrl, f_dist, zeta, T, gains_file, test_name))
