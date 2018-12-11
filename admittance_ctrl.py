@@ -17,39 +17,39 @@ class Empty:
 
 class GainsAdmCtrl:
     
-    def __init__(self, gain_array=None, nf=4):
+    def __init__(self, gain_array=None, nf=2):
         '''
             gain_array: numpy array containing all the gains
             nf:         number of force feedback gains
         '''
         self.nf = nf
         if gain_array is None:
-            gain_array = np.zeros(6+nf)
+            gain_array = np.zeros(4+nf)
         self.from_array(gain_array)
     
     def to_array(self):
-        res = np.zeros(6+self.nf)
-        res[0] = self.Kp_adm
-        res[1] = self.Kd_adm
-        res[2] = self.Kp_com
-        res[3] = self.Kd_com
-        res[4] = self.kp_bar    #    Kp_pos = kp_bar*Mj_diag
-        res[5] = self.kd_bar    #    Kd_pos = kd_bar*Mj_diag
-        res[6:6+self.nf] = np.diag(self.Kf)
+        res = np.zeros(4+self.nf)
+#        res[0] = self.Kp_adm
+#        res[1] = self.Kd_adm
+        res[0] = self.Kp_com
+        res[1] = self.Kd_com
+        res[2] = self.kp_bar    #    Kp_pos = kp_bar*Mj_diag
+        res[3] = self.kd_bar    #    Kd_pos = kd_bar*Mj_diag
+        res[4:4+self.nf] = np.diag(self.Kf)[:2]
         return res
         
     def from_array(self, gains):
-        self.Kp_adm = gains[0]
-        self.Kd_adm = gains[1]
-        self.Kp_com = gains[2]
-        self.Kd_com = gains[3]
-        self.kp_bar = gains[4]
-        self.kd_bar = gains[5]
-        self.Kf     = np.asmatrix(np.diag(gains[6:6+self.nf]))
+#        self.Kp_adm = gains[0]
+#        self.Kd_adm = gains[1]
+        self.Kp_com = gains[0]
+        self.Kd_com = gains[1]
+        self.kp_bar = gains[2]
+        self.kd_bar = gains[3]
+        self.Kf     = np.asmatrix(np.diag(np.concatenate((gains[4:4+self.nf],gains[4:4+self.nf]))))
         
     def to_string(self):
         res = ''
-        for s in ['Kp_adm', 'Kd_adm', 'Kp_com', 'Kd_com', 'kp_bar', 'kd_bar']:
+        for s in ['Kp_com', 'Kd_com', 'kp_bar', 'kd_bar']:
             res += s+' = '+str(self.__dict__[s])+'\n'
         res += 'Kf = 1e-4*np.diag('+str([v for v in 1e4*np.diag(self.Kf)])+')'
         return res
@@ -58,7 +58,7 @@ class GainsAdmCtrl:
     def get_default_gains(K):
         gains = GainsAdmCtrl()
         K_inv = np.linalg.inv(K)
-        gains.Kp_adm, gains.Kd_adm, gains.Kp_com, gains.Kd_com, gains.Kf = 20.5603371308, 77.9184247381, 30.6694018561, 10.2970910213, 400*K_inv # poles 5, 15, 25, 35
+        gains.Kp_com, gains.Kd_com, gains.Kf = 30.6694018561, 10.2970910213, 400*K_inv # poles 5, 15, 25, 35
         gains.kp_bar = 1e4
         gains.kd_bar = 200.0
         return gains
