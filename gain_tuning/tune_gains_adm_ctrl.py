@@ -36,19 +36,12 @@ DATA_DIR                = conf.DATA_DIR + conf.GAINS_DIR_NAME
 OUTPUT_DATA_FILE_NAME   = conf.GAINS_FILE_NAME # 'gains_adm_ctrl'
 SAVE_DATA               = 1
 LOAD_DATA               = 0 # if 1 it tries to load the gains from the specified binary file
-
-N           = int(conf.T_genetic/conf.dt_genetic)
-dt          = conf.dt_genetic
-w_x         = conf.w_x
-w_dx        = conf.w_dx
-w_d2x       = conf.w_d2x
-w_d3x       = conf.w_d3x
-w_d4x_list  = conf.w_d4x_list
-ny          = conf.ny
-nf          = conf.nf
-x0          = conf.x0
-max_iter    = conf.max_iter        # max number of iteration of genetic algorithm
-do_plots    = conf.do_plots         # if true it shows the plots
+N                       = int(conf.T_genetic/conf.dt_genetic)
+dt                      = conf.dt_genetic
+w_d4x_list              = conf.w_d4x_list
+x0                      = conf.x0
+plut.SAVE_FIGURES       = 1
+plut.FIGURE_PATH        = DATA_DIR
 
 K = Simu.get_default_contact_stiffness()
 initial_gains = GainsAdmCtrl.get_default_gains(K)
@@ -70,8 +63,8 @@ if(not LOAD_DATA):
     for w_d4x in w_d4x_list:
         print("".center(100,'#'))
         print("Tuning gains for w_d4x={}".format(w_d4x))
-        Q = convert_cost_function(w_x, w_dx, w_d2x, w_d3x, w_d4x)
-        optimal_gains[w_d4x] = optimize_gains_adm_ctrl(Q, N, dt, max_iter, x0, initial_guess, do_plots=0)
+        Q = convert_cost_function(conf.w_x, conf.w_dx, conf.w_d2x, conf.w_d3x, w_d4x)
+        optimal_gains[w_d4x] = optimize_gains_adm_ctrl(Q, N, dt, conf.max_iter, x0, initial_guess, do_plots=0)
         
         # update initial guess
         initial_guess = optimal_gains[w_d4x]
@@ -99,17 +92,17 @@ robot   = Hrp2Reduced(urdf, [pkg], loadModel=0, useViewer=0)
 q       = robot.q0.copy()
 v       = matlib.zeros((robot.model.nv,1))
 
-Q_pos   = convert_cost_function(w_x, w_dx, w_d2x, w_d3x, 0.0)
+Q_pos   = convert_cost_function(conf.w_x, conf.w_dx, conf.w_d2x, conf.w_d3x, 0.0)
 Q_ddf   = convert_cost_function(0.0, 0.0, 0.0, 0.0, 1.0)
 
-gain_optimizer = GainOptimizeAdmCtrl(robot, q, v, K, ny, nf, initial_gains.to_array(), dt, x0, N, Q_pos)
+gain_optimizer = GainOptimizeAdmCtrl(robot, q, v, K, conf.ny, conf.nf, initial_gains.to_array(), dt, x0, N, Q_pos)
 normalized_initial_gains = matlib.ones_like(initial_gains.to_array())
 gain_optimizer.set_cost_function_matrix(Q_pos)
 initial_cost_pos    = gain_optimizer.cost_function(normalized_initial_gains)
 gain_optimizer.set_cost_function_matrix(Q_ddf)
 initial_cost_ddf    = gain_optimizer.cost_function(normalized_initial_gains)
 
-if(do_plots):
+if(conf.do_plots):
     H = gain_optimizer.compute_transition_matrix(initial_gains.to_array());
     simulate_ALDS(H, x0, dt, N, 1, 0)
     plt.title("Initial gains")
@@ -125,7 +118,7 @@ for w_d4x in keys_sorted:
     gains = optimal_gains[w_d4x]
     normalized_opt_gains = gain_optimizer.normalize_gains_array(gains)
     
-#    Q = convert_cost_function(w_x, w_dx, w_d2x, w_d3x, w_d4x)
+#    Q = convert_cost_function(conf.w_x, conf.w_dx, conf.w_d2x, conf.w_d3x, w_d4x)
 #    gain_optimizer.set_cost_function_matrix(Q)
 #    initial_cost    = gain_optimizer.cost_function(normalized_initial_gains)
 #    optimal_cost    = gain_optimizer.cost_function(normalized_opt_gains)
@@ -146,7 +139,7 @@ for w_d4x in keys_sorted:
     H = gain_optimizer.compute_transition_matrix(gains);
     print("Largest eigenvalues:", np.sort_complex(eigvals(H))[-4:].T)
     
-    if(do_plots):
+    if(conf.do_plots):
         simulate_ALDS(H, x0, dt, N, 1, 0)
         plt.title("log(w_d4x)=%.1f"%(np.log10(w_d4x)))
 
@@ -154,11 +147,14 @@ plt.figure()
 for w_d4x in keys_sorted:
     plt.plot(optimal_cost_pos[w_d4x], optimal_cost_ddf[w_d4x], ' *', markersize=30, label='w_d4x=%.1e'%(w_d4x))
 plt.legend()
-plt.xscale('log')
-plt.yscale('log')
 plt.xlabel('Position tracking cost')
 plt.ylabel('Force acceleration cost')
 plt.grid(True);
+plut.saveFigure('roc_adm_ctrl_lin_scale')
 
-if(do_plots):    
+plt.xscale('log')
+plt.yscale('log')
+plut.saveFigure('roc_adm_ctrl_log_scale')
+
+if(conf.do_plots):    
     plt.show()
