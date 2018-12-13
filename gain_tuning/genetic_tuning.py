@@ -66,6 +66,8 @@ class GainOptimizeAdmCtrl(GainOptimizer):
         self.x0 = x0    # initial state for cost function evaluation
         self.N = N      # number of time steps for cost function evaluation
         self.Q = Q      # cost function matrix: x^T * Q * x
+        self.max_normalized_gain = 3.0
+        self.w_gain   = 0.0
         
         self.nv = robot.model.nv
         self.na = self.nv-ny
@@ -140,27 +142,30 @@ class GainOptimizeAdmCtrl(GainOptimizer):
         gains_array = self.denormalize_gains_array(normalized_gains);
         H = self.compute_transition_matrix(gains_array);
         x = simulate_ALDS(H, self.x0, self.dt, self.N, 0)
+        
+        # check if the trajectory contains not finite elements
+        x_not_finite = np.logical_not(np.isfinite(x))
+        if(np.any(x_not_finite)):
+            print 'WARNING: x contains %f percent of not finite elements'%(1e2*np.count_nonzero(x_not_finite)/x.size)
+            return 1e5*np.count_nonzero(x_not_finite)/x.size
+            
         cost = 0.0
-        not_finite_warning_printed = 1
         for i in range(self.N):
-            if(np.all(np.isfinite(x[:,i]))):
-                last_finite_x = x[:,i]
-            elif(not not_finite_warning_printed):
-                print 'WARNING: x is not finite at time step %d'%(i) #, x[:,i].T
-                not_finite_warning_printed = True
-            cost += self.dt*(last_finite_x.T * self.Q * last_finite_x)[0,0]
-        cost /= (self.N*self.dt)
-#        print 'Gains:', GainsAdmCtrl(gains_array).to_string()
-#        print "Largest eigenvalues:", np.sort_complex(eigvals(H))[-4:].T,
-#        print 'Cost ', cost
+            cost += self.dt*(x[:,i].T * self.Q * x[:,i])[0,0]
+
         if not np.isfinite(cost):
             print 'WARNING: cost is not finite', cost
-#            step_response(H, self.x0, self.dt, self.N, 1)
+            return 1e5/x.size
+
+        cost /= (self.N*self.dt)            
         return cost
         
     def normalized_cost_function(self, normalized_gains):
         cost = self.cost_function(normalized_gains)
-        return cost/self.nominal_cost
+        cost_gains = self.w_gain*np.sum(np.maximum(normalized_gains-self.max_normalized_gain, np.zeros_like(normalized_gains))**2)
+        if(cost_gains > cost/self.nominal_cost):
+            print "Adding cost for too large gains %f to standard cost %f"%(cost_gains, cost/self.nominal_cost)
+        return (cost/self.nominal_cost) + cost_gains
         
     def optimize_gains(self, niter=100):
         initial_guess = np.ones_like(self.nominal_gains)
@@ -170,19 +175,24 @@ class GainOptimizeAdmCtrl(GainOptimizer):
         
         return opt_gains
 
+def compute_projection_to_com_state():
+    nl = 2
+    ny = 3
+    robot   = Hrp2Reduced(urdf, [pkg], loadModel=0, useViewer=0)
+    m       = np.sum([robot.model.inertias[i].mass for i in range(1,len(robot.model.inertias))])
+    S       = np.hstack((np.eye(nl), np.zeros((nl,ny-nl))))     # matrix selecting CoM from x
+    SA      = np.hstack((np.eye(nl), np.eye(nl)))               # matrix adding forces
+    P       = np.matrix((1.0/m)*block_diag(S, S, SA, SA, SA))   # projection from full state to CoM state
+    return P
+    
 def convert_cost_function(w_x, w_dx, w_d2x, w_d3x, w_d4x):
     ''' Convert the cost function of the CoM state in the cost function
         of the momentum+force state.
     '''
     nl = 2
-    ny = 3
-#    robot   = Hrp2Reduced(urdf, [pkg], loadModel=0, useViewer=0)
-    m       = 1.0 #np.sum([robot.model.inertias[i].mass for i in range(1,len(robot.model.inertias))])
     Q_diag  = np.matrix(nl*[w_x] + nl*[w_dx] + nl*[w_d2x] + nl*[w_d3x] + nl*[w_d4x])
     Q_c     = matlib.diagflat(Q_diag)                           # weight matrix for CoM state
-    S       = np.hstack((np.eye(nl), np.zeros((nl,ny-nl))))     # matrix selecting CoM from x
-    SA      = np.hstack((np.eye(nl), np.eye(nl)))               # matrix adding forces
-    P       = np.matrix((1.0/m)*block_diag(S, S, SA, SA, SA))   # projection from full state to CoM state
+    P       = compute_projection_to_com_state()
     Q       = P.T * Q_c * P
     return Q
     
