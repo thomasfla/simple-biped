@@ -143,8 +143,8 @@ if(SAVE_DATA):
     try:
         os.makedirs(RESULTS_PATH);
     except OSError:
-        print "Directory already exists."
-        raw_input("Are you sure that you want to continue? ")
+        print "Directory already exists so I am going to overwrite existing data."
+#        raw_input("Are you sure that you want to continue? ")
     plut.FIGURE_PATH = RESULTS_PATH
     
 robot = Hrp2Reduced(urdf,[pkg],loadModel=True,useViewer=useViewer)
