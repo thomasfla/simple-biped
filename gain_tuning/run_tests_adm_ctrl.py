@@ -29,7 +29,7 @@ for (ctrl, f_dist, zeta, w_d4x) in itertools.product(controllers, f_dists, zetas
     test_name = conf.TESTS_DIR_NAME + conf.get_test_name(ctrl, zeta, f_dist, w_d4x)
     gains_file = conf.DATA_DIR + conf.GAINS_DIR_NAME + conf.get_gains_file_name(w_d4x)
     
-    cmd = ('python track_com.py --controller=%s --f_dist=%.1f --zeta=%.1f --T=%.1f --gain_file="%s" --test_name="%s"'%(
+    cmd = ('python ../track_com.py --controller=%s --f_dist=%.1f --zeta=%.1f --T=%.1f --gain_file="%s" --test_name="%s"'%(
                                         ctrl, f_dist, zeta, T, gains_file, test_name))
     print("Execute this command:\n", cmd, "\n")
     # start several subprocesses
