@@ -91,8 +91,11 @@ class AdmittanceControl:
         Kspring = -np.matrix(np.diagflat([Ky,Kz,Ky,Kz]))   # Stiffness of the feet spring
         self.Kinv = np.linalg.inv(Kspring)
         self.Kf     = gains.Kf #-self.Kinv
-        self.Kp_adm = gains.Kp_adm
-        self.Kd_adm = gains.Kd_adm
+        # try to read Kp_adm and Kd_adm, but they may not be specified if not needed
+        try: self.Kp_adm = gains.Kp_adm
+        except: pass
+        try: self.Kd_adm = gains.Kd_adm
+        except: pass
         self.fMin = fMin
         self.mu = mu
         
