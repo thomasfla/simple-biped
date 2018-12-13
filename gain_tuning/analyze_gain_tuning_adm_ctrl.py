@@ -17,12 +17,13 @@ from simple_biped.utils.utils_thomas import compute_stats
 from simple_biped.utils.tsid_utils import createContactForceInequalities
 from simple_biped.utils.regex_dict import RegexDict
 from simple_biped.utils.LDS_utils import simulate_ALDS
-from simple_biped.gain_tuning.genetic_tuning import GainOptimizeAdmCtrl
+from simple_biped.gain_tuning.genetic_tuning import GainOptimizeAdmCtrl, convert_cost_function, compute_projection_to_com_state
 from simple_biped.simu import Simu
 from simple_biped.admittance_ctrl import GainsAdmCtrl
 from simple_biped.hrp2_reduced import Hrp2Reduced
 from simple_biped.robot_model_path import pkg, urdf 
 import simple_biped.utils.plot_utils as plut
+from simple_biped.utils.utils_thomas import finite_diff
 
 import simple_biped.gain_tuning.adm_ctrl_tuning_conf as conf
 
@@ -32,6 +33,13 @@ import pickle
 
 class Empty:
     pass    
+
+def compute_stats_and_add_to_data(name, x):
+    mean_err, rmse, max_err = compute_stats(x)
+    data.__dict__[name+'_mean_err']  = mean_err
+    data.__dict__[name+'_rmse']      = rmse
+    data.__dict__[name+'_max_err']   = max_err
+    data.__dict__[name+'_mse']       = rmse**2
     
 np.set_printoptions(precision=1, linewidth=200, suppress=True)
 
@@ -42,19 +50,18 @@ controllers     = conf.controllers
 f_dists         = conf.f_dists
 zetas           = conf.zetas
 T               = conf.T_simu
-w_ddf_list      = conf.w_ddf_list
+w_d4x_list      = conf.w_d4x_list
 
 DATA_DIR                = conf.DATA_DIR + conf.TESTS_DIR_NAME
 GAINS_DIR               = conf.DATA_DIR + conf.GAINS_DIR_NAME
 GAINS_FILE_NAME         = conf.GAINS_FILE_NAME
 dt                      = conf.dt_simu
 mu                      = conf.mu
-T_DISTURB_BEGIN         = conf.T_DISTURB_BEGIN
 
 DATA_FILE_NAME          = 'logger_data.npz'
 OUTPUT_DATA_FILE_NAME   = 'summary_data'
 SAVE_DATA               = 1
-LOAD_DATA               = 1
+LOAD_DATA               = 0
 plut.SAVE_FIGURES       = 1
 SHOW_FIGURES            = 1
 plut.FIGURE_PATH        = DATA_DIR
@@ -65,10 +72,11 @@ optimal_gains = pickle.load(f)
 f.close()
 
 N = int(T/dt)
-N_DISTURB_BEGIN = int(T_DISTURB_BEGIN/dt)
+N_DISTURB_END = int(conf.T_DISTURB_END/dt) +1
+nc = conf.nc
 ny = conf.ny
 nf = conf.nf
-x0 = conf.x0
+#x0 = conf.x0
 
 # SETUP
 robot   = Hrp2Reduced(urdf, [pkg], loadModel=0, useViewer=0)
@@ -76,14 +84,7 @@ q       = robot.q0.copy()
 v       = matlib.zeros((robot.model.nv,1))
 K       = Simu.get_default_contact_stiffness()
 initial_gains = GainsAdmCtrl.get_default_gains(K)
-
-Q_pos   = conf.Q_pos
-Q_ddf   = conf.Q_ddf 
-expected_cost_pos = {}
-expected_cost_ddf = {}
-
-gain_optimizer = GainOptimizeAdmCtrl(robot, q, v, K, ny, nf, initial_gains.to_array(), dt, x0, N, Q_pos)
-
+gain_optimizer = GainOptimizeAdmCtrl(robot, q, v, K, ny, nf, initial_gains.to_array(), dt, conf.x0, N, np.eye(2*ny+3*nf))
 
 if(LOAD_DATA):
     try:
@@ -108,9 +109,20 @@ if(not LOAD_DATA):
     
     time = np.arange(N*dt, step=dt)
     
-    for (ctrl, f_dist, zeta, w_ddf) in itertools.product(controllers, f_dists, zetas, w_ddf_list):
+    Q_state_lin = convert_cost_function(conf.w_x, conf.w_dx, conf.w_d2x, conf.w_d3x, 0.0)
+    Q_state_lin_comp = 4*[None]
+    Q_state_lin_comp[0] = convert_cost_function(conf.w_x, 0.0, 0.0, 0.0, 0.0)
+    Q_state_lin_comp[1] = convert_cost_function(0.0, conf.w_dx, 0.0, 0.0, 0.0)
+    Q_state_lin_comp[2] = convert_cost_function(0.0, 0.0, conf.w_d2x, 0.0, 0.0)
+    Q_state_lin_comp[3] = convert_cost_function(0.0, 0.0, 0.0, conf.w_d3x, 0.0)
+    Q_state = matlib.diagflat(np.matrix(1*[conf.w_x] + 1*[conf.w_dx] + 1*[conf.w_d2x] + 1*[conf.w_d3x]))
+    Q_ctrl_lin  = convert_cost_function(0.0, 0.0, 0.0, 0.0, 1.0)
+    P = compute_projection_to_com_state()
+    P_pinv = np.linalg.pinv(P)
+    
+    for (ctrl, f_dist, zeta, w_d4x) in itertools.product(controllers, f_dists, zetas, w_d4x_list):
 
-        test_name = conf.get_test_name(ctrl, zeta, f_dist, w_ddf)
+        test_name = conf.get_test_name(ctrl, zeta, f_dist, w_d4x)
         INPUT_FILE = DATA_DIR + test_name + '/' + DATA_FILE_NAME
         
         print '\n'+"".center(120, '#')
@@ -118,136 +130,156 @@ if(not LOAD_DATA):
         print "".center(120, '#')
             
         # SETUP LOGGER
+        data = Empty()
         lgr = RaiLogger()
         try:
             lgr.load(INPUT_FILE)
+            
+            com_p = lgr.get_vector('simu_com_p', 2)[:,N_DISTURB_END:]
+            com_ref = lgr.get_vector('tsid_comref', 2)[:,N_DISTURB_END:]
+            com_err = com_p-com_ref
+            com_v = lgr.get_vector('simu_com_v', 2)[:,N_DISTURB_END:]
+            com_a = lgr.get_vector('simu_com_a', 2)[:,N_DISTURB_END:]
+            com_j = lgr.get_vector('simu_com_j', 2)[:,N_DISTURB_END:]
+            com_s = np.matrix(finite_diff(com_j, dt, False))
+            lkf = lgr.get_vector('simu_lkf', nf/2)[:,N_DISTURB_END:]
+            rkf = lgr.get_vector('simu_rkf', nf/2)[:,N_DISTURB_END:]
+            f   = np.vstack((lkf,rkf))
+    #        df  = lgr.get_vector('simu_df', nf)
+    #        ddf = lgr.get_vector('simu_ddf', nf)
+            
+            # compute state cost and control cost for real system
+            N = com_p.shape[1] #len(lgr.get_streams('simu_q_0'))
+            time = np.arange(N*dt, step=dt)
+            
+            state_cost, control_cost, state_cost_component = 0.0, 0.0, np.zeros(4)
+            for t in range(N):
+                x = np.matrix([[com_err[0,t], com_v[0,t], com_a[0,t], com_j[0,t]]]).T
+                u = np.matrix([[com_s[0,t]]])
+                state_cost   += dt*(x.T * Q_state * x)[0,0]
+                control_cost += dt*(u.T * u)[0,0]
+                for i in range(4): state_cost_component[i] += dt*(x[i] * Q_state[i,i] * x[i])
+            data.cost_state   = np.sqrt(state_cost/T)
+            data.cost_control = np.sqrt(control_cost/T)
+            data.cost_state_component = np.sqrt(state_cost_component/T)
+            
+            fric_cone_viol = np.zeros(N)
+            for t in range(f.shape[1]):
+                tmp = np.max(B_f * f[:,t] - b_f)
+                if(tmp>0.0): fric_cone_viol[t] = tmp
+            compute_stats_and_add_to_data('fric_cone_viol', fric_cone_viol)
         except:
             print "Could not read file", INPUT_FILE
-            continue
+            data.cost_state   = np.nan
+            data.cost_control = np.nan
+            data.cost_state_component = 4*[np.nan]        
         
-        nf = 4
-        com_p = lgr.get_vector('simu_com_p', 2)
-        com_ref = lgr.get_vector('tsid_comref', 2)
-        com_v = lgr.get_vector('simu_com_v', 2)
-        lkf = lgr.get_vector('simu_lkf', nf/2)
-        rkf = lgr.get_vector('simu_rkf', nf/2)
-        f   = np.vstack((lkf,rkf))
-        df  = lgr.get_vector('simu_df', nf)
-        ddf = lgr.get_vector('simu_ddf', nf)
-        
-        data = Empty()
-        def compute_stats_and_add_to_data(name, x):
-            mean_err, rmse, max_err = compute_stats(x)
-            data.__dict__[name+'_mean_err']  = mean_err
-            data.__dict__[name+'_rmse']      = rmse
-            data.__dict__[name+'_max_err']   = max_err
-            data.__dict__[name+'_mse']       = rmse**2
-            
-        compute_stats_and_add_to_data('com_pos', com_p-com_ref)
-        compute_stats_and_add_to_data('ddf',     ddf)
-        print "CoM pos tracking MSE:    %.1f mm"%(1e3*data.com_pos_mse)
-        print "Force acc MS:            %.1f N/s^2"%(data.ddf_mse)
-        
-        N = len(lgr.get_streams('simu_q_0'))
-        fric_cone_viol = np.zeros(N)
-        for t in range(f.shape[1]):
-            tmp = np.max(B_f * f[:,t] - b_f)
-            if(tmp>0.0): fric_cone_viol[t] = tmp
-        compute_stats_and_add_to_data('fric_cone_viol', fric_cone_viol)
-        
-        key = res.generate_key(keys, (ctrl, f_dist, zeta, w_ddf))
+        key = res.generate_key(keys, (ctrl, f_dist, zeta, w_d4x))
         res[key] = data
         
-        # simulate expected responce
-        H = gain_optimizer.compute_transition_matrix(optimal_gains[w_ddf]);
-        x = simulate_ALDS(H, x0, dt, N, 0, 0)
+        # simulate expected costs for linear system
+        if(np.isfinite(data.cost_state)):
+            x0_com = np.vstack((com_err[:,0], com_v[:,0], com_a[:,0], com_j[:,0], com_s[:,0]))
+            print '1e3*x0_com', 1e3*x0_com.T
+            x0 = P_pinv * x0_com
+        H = gain_optimizer.compute_transition_matrix(optimal_gains[w_d4x]);
+                
+        def compute_expected_costs(x):
+            x_proj = matlib.empty((P.shape[0], N))  # com state
+            expected_state_cost, expected_control_cost, expected_state_cost_component = 0.0, 0.0, np.zeros(4)
+            for t in range(N):
+                x_proj[:,t] = P * x[:,t]
+                expected_state_cost   += dt*(x[:,t].T * Q_state_lin * x[:,t])[0,0]
+                expected_control_cost += dt*(x[:,t].T * Q_ctrl_lin * x[:,t])[0,0]
+                for i in range(4): expected_state_cost_component[i] += dt*(x[:,t].T * Q_state_lin_comp[i] * x[:,t])
+            return x_proj, np.sqrt(expected_state_cost/T), np.sqrt(expected_control_cost/T), np.sqrt(expected_state_cost_component/T)
+            
+        x = simulate_ALDS(H, x0, dt, N)
+        x_proj, data.expected_state_cost, data.expected_control_cost, data.expected_state_cost_component = compute_expected_costs(x)
+        
+        x2 = simulate_ALDS(H, conf.x0, dt, N)
+        x2_proj, data.expected_state_cost2, data.expected_control_cost2, data.expected_state_cost_component2 = compute_expected_costs(x2)
+        
+        print 'Real state cost:        %f'%(data.cost_state)
+        print 'Expected state cost:    %f'%(data.expected_state_cost)
+        print 'Real ctrl cost:         %f'%(data.cost_control)
+        print 'Expected ctrl cost:     %f'%(data.expected_control_cost)
+        for i in range(4):
+            print 'Real state component %d cost:        %f'%(i, data.cost_state_component[i])
+            print 'Expected state component %d cost:    %f'%(i, data.expected_state_cost_component[i])
         
         if(plut.SAVE_FIGURES or conf.do_plots):
             # plot real CoM trajectory VS expected CoM trajectory        
-            fi, ax = plt.subplots(3, 1, sharex=True);
-            ax[0].plot(time, x[0,:].A1, label='expected')
-            ax[0].plot(time[:-N_DISTURB_BEGIN], (com_p-com_ref)[0,N_DISTURB_BEGIN:].A1, '--', label='real')
-            ax[0].set_title(r'CoM Pos Y, $w_{\ddot{f}}$='+str(w_ddf))
-            ax[0].legend()
-            ax[1].plot(time, x[ny,:].A1, label='expected')
-            ax[1].plot(time[:-N_DISTURB_BEGIN], com_v[0,N_DISTURB_BEGIN:].A1, '--', label='real')
-            ax[1].set_title('CoM Vel Y')
-            ax[2].plot(time, x[2*ny+2*nf+1,:].A1, label='expected')
-            ax[2].plot(time[:-N_DISTURB_BEGIN], ddf[1,N_DISTURB_BEGIN:].A1, '--', label='real')
-            ax[2].set_title('ddf left foot Z')
-            plut.saveFigure('exp_vs_real_com_pos_vel_ddf_Y_'+ctrl+'_w_ddf_'+str(w_ddf))
-            
-            fi, ax = plt.subplots(ny, 1, sharex=True);
-            for i in range(ny):
-                ax[i].plot(time, x[i,:].A1, label='expected')
-                if(i<2): ax[i].plot(time[:-N_DISTURB_BEGIN], (com_p-com_ref)[i,N_DISTURB_BEGIN:].A1, '--', label='real')
-                ax[i].set_title('CoM '+str(i)+r', $w_{\ddot{f}}$='+str(w_ddf))
-            ax[0].legend()
-            plut.saveFigure('exp_vs_real_com_'+ctrl+'_w_ddf_'+str(w_ddf))
-#            mean_err, rmse, max_err = compute_stats(x[:2,:])
-#            print 'expected MSE x %.6f'%(rmse**2)
-#            print 'real MSE com   %.6f'%data.com_pos_mse
-            
-            fi, ax = plt.subplots(nf, 1, sharex=True);
-            for i in range(nf):
-                ax[i].plot(time, x[2*ny+i,:].A1, label='expected')
-                ax[i].plot(time[:-N_DISTURB_BEGIN], f[i,N_DISTURB_BEGIN:].A1, '--', label='real')
-                ax[i].set_title('f '+str(i)+r', $w_{\ddot{f}}$='+str(w_ddf))
-            ax[0].legend()
-            plut.saveFigure('exp_vs_real_f_'+ctrl+'_w_ddf_'+str(w_ddf))
-            
-            fi, ax = plt.subplots(nf, 1, sharex=True);
-            for i in range(nf):
-                ax[i].plot(time, x[2*ny+nf+i,:].A1, label='expected')
-                ax[i].plot(time[:-N_DISTURB_BEGIN], df[i,N_DISTURB_BEGIN:].A1, '--', label='real')
-                ax[i].set_title('df '+str(i)+r', $w_{\ddot{f}}$='+str(w_ddf))
-            ax[0].legend()
-            plut.saveFigure('exp_vs_real_df_'+ctrl+'_w_ddf_'+str(w_ddf))
-            
-            fi, ax = plt.subplots(nf, 1, sharex=True);
-            for i in range(nf):
-                ax[i].plot(time, x[2*ny+2*nf+i,:].A1, label='expected')
-                ax[i].plot(time[:-N_DISTURB_BEGIN], ddf[i,N_DISTURB_BEGIN:].A1, '--', label='real')
-                ax[i].set_title('ddf '+str(i)+r', $w_{\ddot{f}}$='+str(w_ddf))
-            ax[0].legend()
-            plut.saveFigure('exp_vs_real_ddf_'+ctrl+'_w_ddf_'+str(w_ddf))
+            fi, ax = plt.subplots(5, 1, sharex=True);
+            i = 0
+            ax[i].plot(time, x_proj[0,:].A1, label='expected')
+            ax[i].plot(time, (com_p-com_ref)[0,:].A1, '--', label='real')
+            ax[i].set_title(r'CoM Pos Y, $w_u$='+str(w_d4x))
+            ax[i].legend()
+            i += 1
+            ax[i].plot(time, x_proj[nc,:].A1, label='expected')
+            ax[i].plot(time, com_v[0,:].A1, '--', label='real')
+            ax[i].set_title('CoM Vel Y')
+            i += 1
+            ax[i].plot(time, x_proj[2*nc,:].A1, label='expected')
+            ax[i].plot(time, com_a[0,:].A1, '--', label='real')
+            ax[i].set_title('Com Acc Y')
+            i += 1
+            ax[i].plot(time, x_proj[3*nc,:].A1, label='expected')
+            ax[i].plot(time, com_j[0,:].A1, '--', label='real')
+            ax[i].set_title('Com Jerk Y')
+            i += 1
+            ax[i].plot(time, x_proj[4*nc,:].A1, label='expected')
+            ax[i].plot(time, com_s[0,:].A1, '--', label='real')
+            ax[i].set_title('Com Snap Y')
+            plut.saveFigure('exp_vs_real_com_Y_'+ctrl+'_w_u_'+str(w_d4x))
     
     if(SAVE_DATA):
         print "Save results in", DATA_DIR + OUTPUT_DATA_FILE_NAME+'.pkl'
         with open(DATA_DIR + OUTPUT_DATA_FILE_NAME+'.pkl', 'wb') as f:
             pickle.dump(res, f, pickle.HIGHEST_PROTOCOL)
 
-# computed expected costs based on linear approximation of closed-loop system
+# plot expected costs VS real costs
 keys_sorted = optimal_gains.keys()
 keys_sorted.sort()
-for w_ddf in keys_sorted:
-    gains = optimal_gains[w_ddf]
-    normalized_opt_gains = gain_optimizer.normalize_gains_array(gains)
     
-    gain_optimizer.set_cost_function_matrix(Q_pos)
-    expected_cost_pos[w_ddf]    = gain_optimizer.cost_function(normalized_opt_gains)
-    gain_optimizer.set_cost_function_matrix(Q_ddf)
-    expected_cost_ddf[w_ddf]    = gain_optimizer.cost_function(normalized_opt_gains)
+plt.figure()
+prop_cycle = plt.rcParams['axes.prop_cycle']
+colors = prop_cycle.by_key()['color']
+for (w_d4x, color) in zip(keys_sorted, colors):
+    tmp = res.get_matching(keys, [None, None, None, w_d4x]).next()
+    plt.plot(tmp.expected_state_cost, tmp.expected_control_cost, ' *', color=color, markersize=30, label=r'Expected, $w_{u}$='+str(w_d4x))
+    plt.plot(tmp.cost_state, tmp.cost_control, ' o', color=color, markersize=30) #, label='real w_d4x='+str(w_d4x))
     
-    print("".center(100,'#'))
-    print("w_ddf={}".format(w_ddf))
-    print("Expected optimal cost pos {}".format(expected_cost_pos[w_ddf]))
-    print("Expected optimal cost ddf {}".format(expected_cost_ddf[w_ddf]))
+plt.legend()
+plt.grid(True);
+plt.xlabel(r'State cost')
+plt.ylabel(r'Control cost')
+plut.saveFigure('roc_'+controllers[0]+'_linscale')
+
+plt.xscale('log')
+plt.yscale('log')
+plut.saveFigure('roc_'+controllers[0]+'_log_scale')
+
 
 plt.figure()
 prop_cycle = plt.rcParams['axes.prop_cycle']
 colors = prop_cycle.by_key()['color']
-for (w_ddf, color) in zip(keys_sorted, colors):
-    plt.plot(expected_cost_pos[w_ddf], expected_cost_ddf[w_ddf], ' *', color=color, markersize=30, label=r'Expected, $w_{\ddot{f}}$='+str(w_ddf))
-    tmp = res.get_matching(keys, [None, None, None, w_ddf]).next()
-    plt.plot(tmp.com_pos_mse, tmp.ddf_mse, ' o', color=color, markersize=30) #, label='real w_ddf='+str(w_ddf))
-plt.xscale('log')
-plt.yscale('log')
+for (w_d4x, color) in zip(keys_sorted, colors):
+    tmp = res.get_matching(keys, [None, None, None, w_d4x]).next()
+    plt.plot(tmp.expected_state_cost2, tmp.expected_control_cost2, ' *', color=color, markersize=30, label=r'Expected, $w_{u}$='+str(w_d4x))
+    plt.plot(tmp.cost_state, tmp.cost_control, ' o', color=color, markersize=30) #, label='real w_d4x='+str(w_d4x))
+    
 plt.legend()
 plt.grid(True);
-plt.xlabel(r'Position tracking cost [m${}^2$]')
-plt.ylabel(r'Force acceleration cost [N${}^2$s${}^{-4}$]')
-plut.saveFigure('roc_'+controllers[0])
+plt.xlabel(r'State cost')
+plt.ylabel(r'Control cost')
+plut.saveFigure('roc_'+controllers[0]+'_fixed_x0_linscale')
+
+plt.xscale('log')
+plt.yscale('log')
+plut.saveFigure('roc_'+controllers[0]+'_fixed_x0_log_scale')
 
 if(conf.do_plots):
     plt.show()
+

@@ -22,7 +22,7 @@ def get_gains_file_name(w_d4x):
     
 DATA_DIR                = str(os.path.dirname(os.path.abspath(__file__)))+'/../data/'
 GAINS_DIR_NAME          = 'gains/'
-TESTS_DIR_NAME          = 'test_gain_tuning/'
+TESTS_DIR_NAME          = 'test_gain_tuning/adm_ctrl_w_dx_0.1_d2x_1e-3_d3x_1e-6/'
 GAINS_FILE_NAME         = 'gains_adm_ctrl'
 
 keys                = ['ctrl', 'fDist', 'zeta', 'w_ddf']
@@ -34,27 +34,22 @@ T_simu              = 5.0
 dt_genetic          = 1e-2  # time step used for gain tuning in genetic algorithm
 dt_simu             = 1e-3  # time step used in simulations
 mu                  = 0.3
-T_DISTURB_BEGIN     = 0.11
+T_DISTURB_END       = 0.11
 
 w_x         = 1.0
-#w_dx        = 0.0
-#w_f         = 0.0
-#w_df        = 0.0
 #w_ddf_list  = np.logspace(-16.0, -9.0, num=8)
 w_x         = 1.0
 w_dx        = 1e-1 #0.0
 w_d2x       = 1e-3
 w_d3x       = 1e-6
 w_d4x_list  = np.logspace(-12.0, -7.0, num=6)
-w_d4x_list  = np.logspace(-7.0, -12.0, num=6)
+w_d4x_list  = np.logspace(-6.0, -10.0, num=5)
 
+nc          = 2     # size of CoM vector
 ny          = 3
 nf          = 4
 x0          = matlib.zeros((3*nf+2*ny,1))
-x0[ny,0]    = .0765     # initial CoM velocity in Y direction
+x0[ny,0]    = 47.2 * .0765     # initial CoM velocity in Y direction times robot mass
 
-max_iter    = 5        # max number of iterations of genetic algorithm
+max_iter    = 1        # max number of iterations of genetic algorithm
 do_plots    = 1
-
-#Q_pos       = matlib.diagflat(np.matrix([w_x,w_x,0.] + ny*[0.] + nf*[0.] + nf*[0.] + nf*[0.0]))
-#Q_ddf       = matlib.diagflat(np.matrix(ny*[0.0]     + ny*[0.] + nf*[0.] + nf*[0.] + nf*[1.0]))
