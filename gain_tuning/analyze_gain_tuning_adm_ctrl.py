@@ -72,11 +72,10 @@ optimal_gains = pickle.load(f)
 f.close()
 
 N = int(T/dt)
-N_DISTURB_END = int(conf.T_DISTURB_END/dt) +1
+N_DISTURB_END = 0 #int(conf.T_DISTURB_END/dt) +1
 nc = conf.nc
 ny = conf.ny
 nf = conf.nf
-#x0 = conf.x0
 
 # SETUP
 robot   = Hrp2Reduced(urdf, [pkg], loadModel=0, useViewer=0)
@@ -168,20 +167,27 @@ if(not LOAD_DATA):
                 tmp = np.max(B_f * f[:,t] - b_f)
                 if(tmp>0.0): fric_cone_viol[t] = tmp
             compute_stats_and_add_to_data('fric_cone_viol', fric_cone_viol)
+            
+            x0_com = np.vstack((com_err[:,0], com_v[:,0], com_a[:,0], com_j[:,0], com_s[:,0]))
+            print '1e3*x0_com', 1e3*x0_com.T
+            x0 = P_pinv * x0_com
         except:
             print "Could not read file", INPUT_FILE
             data.cost_state   = np.nan
             data.cost_control = np.nan
             data.cost_state_component = 4*[np.nan]        
+            x0 = conf.x0
+            com_ref = np.nan*matlib.zeros((2, N))
+            com_p = np.nan*matlib.zeros((2, N))
+            com_v = np.nan*matlib.zeros((2, N))
+            com_a = np.nan*matlib.zeros((2, N))
+            com_j = np.nan*matlib.zeros((2, N))
+            com_s = np.nan*matlib.zeros((2, N))
         
         key = res.generate_key(keys, (ctrl, f_dist, zeta, w_d4x))
         res[key] = data
         
-        # simulate expected costs for linear system
-        if(np.isfinite(data.cost_state)):
-            x0_com = np.vstack((com_err[:,0], com_v[:,0], com_a[:,0], com_j[:,0], com_s[:,0]))
-            print '1e3*x0_com', 1e3*x0_com.T
-            x0 = P_pinv * x0_com
+        # simulate expected costs for linear system        
         H = gain_optimizer.compute_transition_matrix(optimal_gains[w_d4x]);
                 
         def compute_expected_costs(x):
@@ -208,32 +214,36 @@ if(not LOAD_DATA):
             print 'Real state component %d cost:        %f'%(i, data.cost_state_component[i])
             print 'Expected state component %d cost:    %f'%(i, data.expected_state_cost_component[i])
         
-        if(plut.SAVE_FIGURES or conf.do_plots):
-            # plot real CoM trajectory VS expected CoM trajectory        
+        def plot_real_vs_expected_com_state(com_expected, name):
             fi, ax = plt.subplots(5, 1, sharex=True);
             i = 0
-            ax[i].plot(time, x_proj[0,:].A1, label='expected')
+            ax[i].plot(time, com_expected[0,:].A1, label='expected')
             ax[i].plot(time, (com_p-com_ref)[0,:].A1, '--', label='real')
             ax[i].set_title(r'CoM Pos Y, $w_u$='+str(w_d4x))
             ax[i].legend()
             i += 1
-            ax[i].plot(time, x_proj[nc,:].A1, label='expected')
+            ax[i].plot(time, com_expected[nc,:].A1, label='expected')
             ax[i].plot(time, com_v[0,:].A1, '--', label='real')
             ax[i].set_title('CoM Vel Y')
             i += 1
-            ax[i].plot(time, x_proj[2*nc,:].A1, label='expected')
+            ax[i].plot(time, com_expected[2*nc,:].A1, label='expected')
             ax[i].plot(time, com_a[0,:].A1, '--', label='real')
             ax[i].set_title('Com Acc Y')
             i += 1
-            ax[i].plot(time, x_proj[3*nc,:].A1, label='expected')
+            ax[i].plot(time, com_expected[3*nc,:].A1, label='expected')
             ax[i].plot(time, com_j[0,:].A1, '--', label='real')
             ax[i].set_title('Com Jerk Y')
             i += 1
-            ax[i].plot(time, x_proj[4*nc,:].A1, label='expected')
+            ax[i].plot(time, com_expected[4*nc,:].A1, label='expected')
             ax[i].plot(time, com_s[0,:].A1, '--', label='real')
             ax[i].set_title('Com Snap Y')
-            plut.saveFigure('exp_vs_real_com_Y_'+ctrl+'_w_u_'+str(w_d4x))
-    
+            plut.saveFigure('exp_vs_real_com_Y_'+ctrl+'_w_u_'+str(w_d4x)+'_'+name)
+            
+        if(plut.SAVE_FIGURES or conf.do_plots):
+            # plot real CoM trajectory VS expected CoM trajectory
+            plot_real_vs_expected_com_state(x_proj, 'same_x0')
+            plot_real_vs_expected_com_state(x2_proj, 'fixed_x0')
+            
     if(SAVE_DATA):
         print "Save results in", DATA_DIR + OUTPUT_DATA_FILE_NAME+'.pkl'
         with open(DATA_DIR + OUTPUT_DATA_FILE_NAME+'.pkl', 'wb') as f:
@@ -280,6 +290,6 @@ plt.xscale('log')
 plt.yscale('log')
 plut.saveFigure('roc_'+controllers[0]+'_fixed_x0_log_scale')
 
-if(conf.do_plots):
+if(SHOW_FIGURES):
     plt.show()
 

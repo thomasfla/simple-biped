@@ -27,14 +27,14 @@ GAINS_FILE_NAME         = 'gains_adm_ctrl'
 
 keys                = ['ctrl', 'fDist', 'zeta', 'w_ddf']
 controllers         = ['adm_ctrl']
-f_dists             = [400.]
+f_dists             = [0.]
 zetas               = [0.3]
 T_genetic           = 10.0
 T_simu              = 5.0
 dt_genetic          = 1e-2  # time step used for gain tuning in genetic algorithm
 dt_simu             = 1e-3  # time step used in simulations
 mu                  = 0.3
-T_DISTURB_END       = 0.11
+T_DISTURB_END       = 0.0
 
 w_x         = 1.0
 #w_ddf_list  = np.logspace(-16.0, -9.0, num=8)
@@ -42,14 +42,15 @@ w_x         = 1.0
 w_dx        = 1e-1 #0.0
 w_d2x       = 1e-3
 w_d3x       = 1e-6
-w_d4x_list  = np.logspace(-12.0, -7.0, num=6)
-w_d4x_list  = np.logspace(-6.0, -10.0, num=5)
+#w_d4x_list  = np.logspace(-12.0, -7.0, num=6)
+w_d4x_list  = np.logspace(-6.0, -12.0, num=7)
 
 nc          = 2     # size of CoM vector
 ny          = 3
 nf          = 4
 x0          = matlib.zeros((3*nf+2*ny,1))
-x0[ny,0]    = 47.2 * .0765     # initial CoM velocity in Y direction times robot mass
+x0[ny,0]    = 47.2 * .1     # initial CoM velocity in Y direction times robot mass
+x0_com      = 1e-3*np.matrix([[ 0.0, 0.0, 1.1e+02, -7.5e-02, 6.0e+01, -3.0e+02, -3.8e-11, 1.3e-11, 0.0, 0.0]]).T #2.6e+08, 6.7e+07]]).T
 
 max_iter    = 1        # max number of iterations of genetic algorithm
-do_plots    = 1
+do_plots    = 0

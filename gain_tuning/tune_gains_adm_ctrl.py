@@ -26,7 +26,7 @@ import simple_biped.utils.plot_utils as plut
 from simple_biped.admittance_ctrl import GainsAdmCtrl
 from simple_biped.simu import Simu
 from simple_biped.utils.LDS_utils import simulate_ALDS
-from simple_biped.gain_tuning.genetic_tuning import optimize_gains_adm_ctrl, convert_cost_function, GainOptimizeAdmCtrl
+from simple_biped.gain_tuning.genetic_tuning import optimize_gains_adm_ctrl, convert_cost_function, GainOptimizeAdmCtrl, compute_projection_to_com_state
 from simple_biped.hrp2_reduced import Hrp2Reduced
 from simple_biped.robot_model_path import pkg, urdf 
 
@@ -39,9 +39,13 @@ LOAD_DATA               = 0 # if 1 it tries to load the gains from the specified
 N                       = int(conf.T_genetic/conf.dt_genetic)
 dt                      = conf.dt_genetic
 w_d4x_list              = conf.w_d4x_list
-x0                      = conf.x0
+#x0                      = conf.x0
 plut.SAVE_FIGURES       = 1
 plut.FIGURE_PATH        = DATA_DIR
+
+P = compute_projection_to_com_state()
+x0 = np.linalg.pinv(P)*conf.x0_com
+print("x0:\n", x0.T)
 
 K = Simu.get_default_contact_stiffness()
 initial_gains = GainsAdmCtrl.get_default_gains(K)
@@ -58,6 +62,7 @@ if(LOAD_DATA):
         LOAD_DATA = 0
 
 if(not LOAD_DATA):
+    
     optimal_gains = {}
     start_time = time.time()
     for w_d4x in w_d4x_list:
