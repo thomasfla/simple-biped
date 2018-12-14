@@ -42,7 +42,7 @@ def controller(t, q, v, f, df):
     return np.vstack([f_disturb_traj(t), tsid.data.tau])
     
 def f_disturb_traj(t):
-    if (t>T_DISTURB_BEGIN and t<T_DISTURB_END ):
+    if (t>=T_DISTURB_BEGIN and t<T_DISTURB_END ):
         return F_DISTURB
     return matlib.zeros(3).T
     
@@ -53,7 +53,7 @@ def com_traj(t, c_init, c_final, T):
             np.matrix([[ay ],[az]]), np.matrix([[jy ],[jz]]), np.matrix([[sy ],[sz]]))
     
 CONTROLLER = 'tsid_adm'             # either 'tsid_rigid' or 'tsid_flex' or 'tsid_adm' or 'tsid_mistry' or 'adm_ctrl'
-F_DISTURB = np.matrix([4e2, 0, 0]).T
+F_DISTURB = np.matrix([0e3, 0, 0]).T
 COM_SIN_AMP = np.array([0.0, 0.0])
 ZETA = .3   # with zeta=0.03 and ndt=100 it is unstable
 k = 1.0
@@ -80,9 +80,9 @@ SHOW_FIGURES                        = 0
 dt  = 1e-3
 ndt = 10
 simulation_time = 2.0
-USE_ESTIMATOR = 0              # use real state for controller feedback
-T_DISTURB_BEGIN = 0.10          # Time at which the disturbance starts
-T_DISTURB_END   = 0.11          # Time at which the disturbance ends
+USE_ESTIMATOR = 0                # use real state for controller feedback
+T_DISTURB_BEGIN = 0.10           # Time at which the disturbance starts
+T_DISTURB_END   = 0.101          # Time at which the disturbance ends
 gain_file = None #'/is/am/adelprete/repos/simple_biped/gain_tuning/../data/gains/gains_tsid_adm_w_d4x=1e-09.npy'
 test_name = None
 
@@ -174,14 +174,22 @@ simu.Brf, simu.Blf = Bspring, Bspring
 simu.enable_friction_cones(mu_simu)
 
 #initial state
-q0 = robot.q0.copy()
-v0 = zero(robot.model.nv)
+#q0 = robot.q0.copy()
+#v0 = zero(robot.model.nv)
 g_vec = robot.model.gravity.linear[1:].A1            # gravity acc vector
 g = np.linalg.norm(g_vec)                            # gravity acceleration
 #se3.computeAllTerms(robot.model,robot.data,q0,v0)
 m = robot.data.mass[0] 
-q0[1]-=0.5*m*g/Kz
-simu.init(q0)
+#q0[1]-=0.5*m*g/Kz
+q0 = np.matrix([[ 1.418e-04 , 5.687e-01 , 1.000e+00, -1.033e-03,  6.799e-04, -1.008e-04,  6.800e-04,  9.811e-05]]).T
+v0 = np.matrix([[ 9.470e-02 , 1.234e-05 ,-6.430e-03, -2.164e-01, -8.863e-03, -2.164e-01,  8.950e-03]]).T
+# project joint velocities in null space of contact Jacobian
+Jl,Jr = robot.get_Jl_Jr_world(q0)
+Jc = np.vstack([Jl[1:3],Jr[1:3]])    # (4, 7)
+Nc = matlib.eye(robot.model.nv) - np.linalg.pinv(Jc)*Jc
+v0 = Nc * v0
+
+simu.init(q0, v0)
 f0,df0 = simu.f, simu.df #compute_f_df_from_q_v(q0,v0)
 c0,dc0,ddc0,dddc0 = robot.get_com_and_derivatives(q0,v0,f0,df0)
 l0 = 0
