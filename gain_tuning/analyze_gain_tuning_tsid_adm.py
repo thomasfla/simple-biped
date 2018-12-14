@@ -16,7 +16,7 @@ from simple_biped.utils.logger import RaiLogger
 from simple_biped.utils.utils_thomas import compute_stats, finite_diff
 from simple_biped.utils.tsid_utils import createContactForceInequalities
 from simple_biped.utils.regex_dict import RegexDict
-from simple_biped.utils.LDS_utils import simulate_ALDS, simulate_LDS, compute_integrator_dynamics, compute_weighted_quadratic_state_control_integral_ALDS
+from simple_biped.utils.LDS_utils import simulate_LDS, compute_integrator_dynamics
 from simple_biped.tsid_admittance import GainsTsidAdm
 from simple_biped.gain_tuning.tune_gains_tsid_adm_utils import convert_tsid_adm_gains_to_integrator_gains
 from simple_biped.simu import Simu
@@ -47,7 +47,6 @@ GAINS_DIR               = conf.DATA_DIR + conf.GAINS_DIR_NAME
 GAINS_FILE_NAME         = conf.GAINS_FILE_NAME
 dt                      = conf.dt_simu
 mu                      = conf.mu
-T_DISTURB_BEGIN         = conf.T_DISTURB_BEGIN
 
 DATA_FILE_NAME          = 'logger_data.npz'
 OUTPUT_DATA_FILE_NAME   = 'summary_data'
@@ -63,7 +62,7 @@ optimal_gains = pickle.load(f)
 f.close()
 
 N = int(T/dt)
-N_DISTURB_BEGIN = int(T_DISTURB_BEGIN/dt)
+N_DISTURB_BEGIN = 0 #int(conf.T_DISTURB_BEGIN/dt) + 1
 ny = conf.ny
 nf = conf.nf
 x0 = conf.x0
@@ -162,17 +161,28 @@ if(not LOAD_DATA):
         gains = GainsTsidAdm(optimal_gains[w_d4x])
         K = convert_tsid_adm_gains_to_integrator_gains(gains, K_contact)
         H = A - B*K
-        (x,u) = simulate_LDS(A, B, K, x0, dt, N)
         
-        expected_state_cost, expected_control_cost, expected_state_cost_component = 0.0, 0.0, np.zeros(4)
-        for t in range(N-1):
-            expected_state_cost   += dt*(x[:,t].T * conf.Q_pos * x[:,t])[0,0]
-            expected_control_cost += dt*(u[:,t].T * conf.R_d4x * u[:,t])[0,0]
-            for i in range(4): expected_state_cost_component[i] += dt*(x[i,t] * conf.Q_pos[i,i] * x[i,t])
+        x0 = np.matrix([com_err[0,0], com_v[0,0], com_a[0,0], com_j[0,0]]).T
+
+#        np.set_printoptions(precision=3, linewidth=200, suppress=False)
+        print 'x0', x0.T
+#        print 'q0', lgr.get_vector('simu_q', 8)[:,N_DISTURB_BEGIN].T
+#        print 'v0', lgr.get_vector('simu_v', 7)[:,N_DISTURB_BEGIN].T
+#        np.set_printoptions(precision=1, linewidth=200, suppress=True)
+        
+        def compute_expected_costs(x, u):
+            expected_state_cost, expected_control_cost, expected_state_cost_component = 0.0, 0.0, np.zeros(4)
+            for t in range(N-1):
+                expected_state_cost   += dt*(x[:,t].T * conf.Q_pos * x[:,t])[0,0]
+                expected_control_cost += dt*(u[:,t].T * conf.R_d4x * u[:,t])[0,0]
+                for i in range(4): expected_state_cost_component[i] += dt*(x[i,t] * conf.Q_pos[i,i] * x[i,t])
+            return np.sqrt(expected_state_cost/T), np.sqrt(expected_control_cost/T), np.sqrt(expected_state_cost_component/T)
             
-        data.expected_state_cost   = np.sqrt(expected_state_cost/T)
-        data.expected_control_cost = np.sqrt(expected_control_cost/T)
-        data.expected_state_cost_component   = np.sqrt(expected_state_cost_component/T)
+        (x,u) = simulate_LDS(A, B, K, x0, dt, N)
+        data.expected_state_cost, data.expected_control_cost, data.expected_state_cost_component = compute_expected_costs(x, u)
+        
+        (x2,u2) = simulate_LDS(A, B, K, conf.x0, dt, N)
+        data.expected_state_cost2, data.expected_control_cost2, data.expected_state_cost_component2 = compute_expected_costs(x2, u2)
         
         print 'Real state cost:        %f'%(data.cost_state)
         print 'Expected state cost:    %f'%(data.expected_state_cost)
@@ -188,7 +198,7 @@ if(not LOAD_DATA):
             i = 0
             ax[i].plot(time, x[0,:].A1, label='expected')
             ax[i].plot(time, (com_p-com_ref)[0,:].A1, '--', label='real')
-            ax[i].set_title(r'CoM Pos Y, $w_{\ddot{f}}$='+str(w_d4x))
+            ax[i].set_title(r'CoM Pos Y, $w_{d4x}$='+str(w_d4x))
             ax[i].legend()
             i += 1
             ax[i].plot(time, x[ny,:].A1, label='expected')
@@ -224,46 +234,17 @@ if(not LOAD_DATA):
         with open(DATA_DIR + OUTPUT_DATA_FILE_NAME+'.pkl', 'wb') as f:
             pickle.dump(res, f, pickle.HIGHEST_PROTOCOL)
 
-# computed expected costs based on linear approximation of closed-loop system
-#Q_pos_sqrt  = np.sqrt(conf.Q_pos)
-#R_pos_sqrt  = np.sqrt(conf.R_pos)
-#Q_d4x_sqrt  = np.sqrt(conf.Q_d4x)
-#R_d4x_sqrt  = np.sqrt(conf.R_d4x)
-##T           = conf.T_cost_function
-#expected_cost_pos = {}
-#expected_cost_d4x = {}
+
 keys_sorted = optimal_gains.keys()
 keys_sorted.sort()
-#
-#for w_d4x in keys_sorted:
-#    gains = GainsTsidAdm(optimal_gains[w_d4x])
-#    K = convert_tsid_adm_gains_to_integrator_gains(gains, K_contact)
-#
-#    expected_cost_pos[w_d4x] = np.sqrt(compute_weighted_quadratic_state_control_integral_ALDS(A, B, K, x0, T, Q_pos_sqrt, R_pos_sqrt, dt) / T)
-#    expected_cost_d4x[w_d4x] = np.sqrt(compute_weighted_quadratic_state_control_integral_ALDS(A, B, K, x0, T, Q_d4x_sqrt, R_d4x_sqrt, dt) / T)
-#
-#    H = A - B*K  # closed-loop transition matrix    
-#    print("".center(100,'#'))
-#    print("w_d4x={}".format(w_d4x))
-#    print("Expected state cost   {}".format(expected_cost_pos[w_d4x]))
-#    print("Expected control cost {}".format(expected_cost_d4x[w_d4x]))
-#    print("Largest eigenvalues:", np.sort_complex(eigvals(H))[-4:].T)
-    
-#    if(conf.do_plots):
-#        simulate_ALDS(H, x0, dt, N, 1, 0)
-#        plt.title("log(w_d4x)=%.1f"%(np.log10(w_d4x)))
-
-plt.figure()
 prop_cycle = plt.rcParams['axes.prop_cycle']
 colors = prop_cycle.by_key()['color']
+
+plt.figure()
 for (w_d4x, color) in zip(keys_sorted, colors):
-#    plt.plot(expected_cost_pos[w_d4x], expected_cost_d4x[w_d4x], ' *', color=color, markersize=30, label=r'Expected, $w_{\ddddot{c}}$='+str(w_d4x))
     tmp = res.get_matching(keys, [None, None, None, w_d4x]).next()
-    plt.plot(tmp.expected_state_cost, tmp.expected_control_cost, ' *', color=color, markersize=30, label=r'Expected, $w_{\ddddot{c}}$='+str(w_d4x))
-    
-#    plt.plot(tmp.com_pos_rmse, tmp.com_snap_rmse, ' o', color=color, markersize=30) #, label='real w_d4x='+str(w_d4x))
-    plt.plot(tmp.cost_state, tmp.cost_control, ' o', color=color, markersize=30) #, label='real w_d4x='+str(w_d4x))
-    
+    plt.plot(tmp.expected_state_cost, tmp.expected_control_cost, ' *', color=color, markersize=30, label=r'Expected, $w_{u}$='+str(w_d4x))
+    plt.plot(tmp.cost_state, tmp.cost_control, ' o', color=color, markersize=30) #, label='real w_d4x='+str(w_d4x))    
 plt.legend()
 plt.grid(True);
 plt.xlabel(r'State cost')
@@ -273,6 +254,21 @@ plut.saveFigure('roc_'+controllers[0]+'_linscale')
 plt.xscale('log')
 plt.yscale('log')
 plut.saveFigure('roc_'+controllers[0]+'_log_scale')
+
+plt.figure()
+for (w_d4x, color) in zip(keys_sorted, colors):
+    tmp = res.get_matching(keys, [None, None, None, w_d4x]).next()
+    plt.plot(tmp.expected_state_cost2, tmp.expected_control_cost2, ' *', color=color, markersize=30, label=r'Expected, $w_{u}$='+str(w_d4x))
+    plt.plot(tmp.cost_state, tmp.cost_control, ' o', color=color, markersize=30) #, label='real w_d4x='+str(w_d4x))    
+plt.legend()
+plt.grid(True);
+plt.xlabel(r'State cost')
+plt.ylabel(r'Control cost')
+plut.saveFigure('roc_'+controllers[0]+'_fixed_x0_linscale')
+
+plt.xscale('log')
+plt.yscale('log')
+plut.saveFigure('roc_'+controllers[0]+'_fixed_x0_log_scale')
 
 if(conf.do_plots):
     plt.show()
