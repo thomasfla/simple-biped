@@ -108,10 +108,12 @@ class GainOptimizeAdmCtrl(GainOptimizer):
         X_am  = np.matrix([-(pzl-cz),+(pyl-cy),-(pzr-cz),+(pyr-cy)])
 #        X_com = np.hstack([np.eye(2)/M[0,0],np.eye(2)/M[0,0]])
         X_com = np.hstack([np.eye(2),np.eye(2)])
-        X = np.vstack([X_com, X_am])
-        self.X_pinv = np.linalg.pinv(X)
+        self.X = np.vstack([X_com, X_am])
+        self.X_pinv = np.linalg.pinv(self.X)
         
-        self.H[  ny:2*ny, 2*ny:2*ny+nf] = X
+        self.H[  ny:2*ny, 2*ny:2*ny+nf] = self.X
+        
+        self.XT_Mb_inv = self.X.T * np.linalg.inv(M[:ny,:ny])
         
         Minv = np.linalg.inv(M)
         Upsilon = J*Minv*J.T
@@ -131,11 +133,11 @@ class GainOptimizeAdmCtrl(GainOptimizer):
         K1 = gains.kp_bar*self.K_A*gains.Kf
         K2 = self.K_Upsilon + gains.kp_bar*matlib.eye(nf)
         self.H_f[2*nf:,   1*nf:2*nf] = - K2
-        self.H_f[2*nf:,   0*nf:1*nf] = - K1
+        self.H_f[2*nf:,   0*nf:1*nf] = - (K1 + gains.kd_bar*self.XT_Mb_inv*self.X)
         
         self.H[2*ny:,     2*ny:]        = self.H_f
         self.H[ -nf:,         :ny]      = -K1*self.X_pinv*gains.Kp_com
-        self.H[ -nf:,       ny:2*ny]    = -K1*self.X_pinv*gains.Kd_com
+        self.H[ -nf:,       ny:2*ny]    = -(K1*self.X_pinv*gains.Kd_com + gains.kp_bar*self.XT_Mb_inv)
         return self.H
         
     def cost_function(self, normalized_gains):
