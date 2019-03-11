@@ -84,8 +84,8 @@ class Simu:
         if self.useViewer:
             robot.viewer.addXYZaxis('world/mrf',[1.,.6,.6,1.],.03,.1)
             robot.viewer.addXYZaxis('world/mlf',[.6,.6,1.,1.],.03,.1)
-            robot.viewer.applyConfiguration('world/mrf',se3ToXYZQUAT(self.Mrf0))
-            robot.viewer.applyConfiguration('world/mlf',se3ToXYZQUAT(self.Mlf0))
+            robot.viewer.applyConfiguration('world/mrf',se3.se3ToXYZQUATtuple(self.Mrf0))
+            robot.viewer.applyConfiguration('world/mlf',se3.se3ToXYZQUATtuple(self.Mlf0))
     
     def init(self, q0, v0=None, reset_contact_positions=False):
         self.q  = q0.copy()

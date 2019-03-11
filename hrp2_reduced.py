@@ -1,4 +1,5 @@
 import pinocchio as se3
+from pinocchio import libpinocchio_pywrap as pin
 from pinocchio.robot_wrapper import RobotWrapper
 from pinocchio.utils import *
 from math import pi,sqrt
@@ -23,7 +24,7 @@ class Visual:
     def place(self,display,oMjoint,refresh=True):
         oMbody = oMjoint*self.placement
         display.applyConfiguration(self.name,
-                                   se3ToXYZQUAT(oMbody) )
+                                   pin.se3ToXYZQUATtuple(oMbody) )
         #Hotfix, my viewer wants the older order
         #~ x,y,z,a,b,c,d = se3ToXYZQUAT(oMbody)
         #~ display.applyConfiguration(self.name,
@@ -44,7 +45,7 @@ class Hrp2Reduced:
         
     def loadHRP(self,urdf,pkgs,loadModel):
         '''Internal: load HRP-2 model from URDF.'''
-        robot = RobotWrapper( urdf, pkgs, root_joint=se3.JointModelFreeFlyer() )
+        robot = RobotWrapper.BuildFromURDF( urdf, pkgs, root_joint=se3.JointModelFreeFlyer() )
         useViewer = self.useViewer
         if useViewer:
             robot.initDisplay( loadModel = loadModel)
