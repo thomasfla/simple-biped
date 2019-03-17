@@ -133,11 +133,13 @@ class GainOptimizeAdmCtrl(GainOptimizer):
         K1 = gains.kp_bar*self.K_A*gains.Kf
         K2 = self.K_Upsilon + gains.kp_bar*matlib.eye(nf)
         self.H_f[2*nf:,   1*nf:2*nf] = - K2
-        self.H_f[2*nf:,   0*nf:1*nf] = - (K1 + gains.kd_bar*self.XT_Mb_inv*self.X)
+#        self.H_f[2*nf:,   0*nf:1*nf] = - (K1 + gains.kd_bar*self.XT_Mb_inv*self.X)
+        self.H_f[2*nf:,   0*nf:1*nf] = - K1
         
         self.H[2*ny:,     2*ny:]        = self.H_f
         self.H[ -nf:,         :ny]      = -K1*self.X_pinv*gains.Kp_com
-        self.H[ -nf:,       ny:2*ny]    = -(K1*self.X_pinv*gains.Kd_com + gains.kp_bar*self.XT_Mb_inv)
+#        self.H[ -nf:,       ny:2*ny]    = -(K1*self.X_pinv*gains.Kd_com + gains.kp_bar*self.XT_Mb_inv)
+        self.H[ -nf:,       ny:2*ny]    = -K1*self.X_pinv*gains.Kd_com
         return self.H
         
     def cost_function(self, normalized_gains):
