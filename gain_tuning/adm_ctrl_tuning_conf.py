@@ -53,7 +53,7 @@ nf          = 4
 x0          = matlib.zeros((3*nf+2*ny,1))
 x0[ny,0]    = 47.2 * .1     # initial CoM velocity in Y direction times robot mass
 
-# state used for gain tuning, which is equal to initial simulation state
+# (deprecated) state used for gain tuning, which is equal to initial simulation state
 x0_com      = 1e-3*np.matrix([[ 0.0, 0.0, 1.1e+02, -7.5e-02, 6.0e+01, -3.0e+02, -2.8e-11, 2.9e-11, 0.0, 0.0]]).T #2.6e+08, 6.7e+07]]).T
 
 max_iter    = 1        # max number of iterations of genetic algorithm

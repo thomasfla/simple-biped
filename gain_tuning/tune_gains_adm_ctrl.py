@@ -39,12 +39,12 @@ LOAD_DATA               = 0 # if 1 it tries to load the gains from the specified
 N                       = int(conf.T_genetic/conf.dt_genetic)
 dt                      = conf.dt_genetic
 w_d4x_list              = conf.w_d4x_list
-#x0                      = conf.x0
+x0                      = conf.x0
 plut.SAVE_FIGURES       = 1
 plut.FIGURE_PATH        = DATA_DIR
 
-P = compute_projection_to_com_state()
-x0 = np.linalg.pinv(P)*conf.x0_com
+#P = compute_projection_to_com_state()
+#x0 = np.linalg.pinv(P)*conf.x0_com
 print("x0:\n", x0.T)
 
 K = Simu.get_default_contact_stiffness()
