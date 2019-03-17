@@ -37,7 +37,7 @@ OUTPUT_DATA_FILE_NAME   = conf.GAINS_FILE_NAME # 'gains_adm_ctrl'
 SAVE_DATA               = 1
 LOAD_DATA               = 0 # if 1 it tries to load the gains from the specified binary file
 N                       = int(conf.T_genetic/conf.dt_genetic)
-dt                      = conf.dt_genetic
+dt                      = conf.dt_cost_function
 w_d4x_list              = conf.w_d4x_list
 x0                      = conf.x0
 plut.SAVE_FIGURES       = 1
@@ -88,7 +88,7 @@ if(not LOAD_DATA):
             pickle.dump(optimal_gains, f, pickle.HIGHEST_PROTOCOL)
         
         for w_d4x in w_d4x_list:
-            with open(DATA_DIR + conf.get_gains_file_name(w_d4x), 'wb') as f:
+            with open(DATA_DIR + conf.get_gains_file_name(conf.GAINS_FILE_NAME, w_d4x), 'wb') as f:
                 np.save(f, optimal_gains[w_d4x])
             
 

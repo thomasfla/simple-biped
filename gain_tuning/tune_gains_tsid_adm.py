@@ -62,7 +62,7 @@ if(not LOAD_DATA):
     start_time = time.time()
     for w_d4x in w_d4x_list:
         print("".center(100,'#'))
-        print("Tuning gains for w_ddf={}".format(w_d4x))
+        print("Tuning gains for w_d4x={}".format(w_d4x))
 
         if(w_d4x<1.0):
             R[0,0] = w_d4x
@@ -91,7 +91,7 @@ if(not LOAD_DATA):
             pickle.dump(optimal_gains, f, pickle.HIGHEST_PROTOCOL)
         
         for w_d4x in w_d4x_list:
-            with open(DATA_DIR + conf.get_gains_file_name(w_d4x), 'wb') as f:
+            with open(DATA_DIR + conf.get_gains_file_name(conf.GAINS_FILE_NAME, w_d4x), 'wb') as f:
                 np.save(f, optimal_gains[w_d4x])
             
 
@@ -122,8 +122,8 @@ for w_d4x in keys_sorted:
     print("".center(100,'#'))
     print("w_d4x={}".format(w_d4x))
     print("Optimal cost     {}".format(optimal_cost))
-    print("Optimal cost pos {}".format(optimal_cost_pos[w_d4x]))
-    print("Optimal cost ddf {}".format(optimal_cost_d4x[w_d4x]))
+    print("Optimal cost state {}".format(optimal_cost_pos[w_d4x]))
+    print("Optimal cost ctrl  {}".format(optimal_cost_d4x[w_d4x]))
     print("Largest eigenvalues:", np.sort_complex(eigvals(H))[-4:].T)
     
     if(do_plots):
@@ -136,8 +136,8 @@ for w_d4x in keys_sorted:
 plt.legend()
 plt.xscale('log')
 plt.yscale('log')
-plt.xlabel('Position tracking cost')
-plt.ylabel('Force acceleration cost')
+plt.xlabel('State tracking cost')
+plt.ylabel('Control cost')
 plt.grid(True);
 
 if(do_plots):    
