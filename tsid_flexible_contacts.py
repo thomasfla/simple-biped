@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from numpy import matlib
 from utils.tsid_utils import createContactForceInequalities
 from pinocchio_inv_dyn.acc_bounds_util_multi_dof import computeAccLimits, compute_min_ddq_stop, areStatesViable, computeVelViabBounds, compute_min_q_upper_bound
+import numpy as np
 
 try:
     from IPython import embed
@@ -15,10 +16,56 @@ except ImportError:
 class Empty:
     pass
     
+class GainsTsidFlexK:
+    ''' Class collecting the gains of TSID-Flex-K:
+        (Kp_mom, Kd_mom, Ka_mom, Kj_mom)
+    '''
+    
+    def __init__(self, gain_array=None):
+        '''
+            gain_array: numpy array containing all the gains
+        '''
+        if gain_array is None:
+            gain_array = np.zeros(4)
+        self.from_array(gain_array)
+    
+    def to_array(self):
+        res = np.zeros(4)
+        res[0] = self.Kp
+        res[1] = self.Kd
+        res[2] = self.Ka
+        res[3] = self.Kj
+        return res
+        
+    def from_array(self, gains):
+        self.Kp = gains[0]
+        self.Kd = gains[1]
+        self.Ka = gains[2]
+        self.Kj = gains[3]
+        
+    def to_string(self):
+        res = ''
+        for s in ['Kp', 'Kd', 'Ka', 'Kj']:
+            res += s+' = '+str(self.__dict__[s])+'\n'
+        return res
+        
+    @staticmethod
+    def get_default_gains(K):
+        gains = GainsTsidFlexK()
+        #    (Kp_com, Kd_com, Ka_com, Kj_com) = (10611.05989124,  4182.20596787,   618.10999684,    40.5999999)     # poles [-10.3 -10.2 -10.1  -10.]
+        #    (Kp_com, Kd_com, Ka_com, Kj_com) = (52674.83686644, 13908.30537877,  1377.10995895, 60.5999991) # poles [-15.30235117 -15.19247204 -15.10739361 -14.99778229]
+        #    (Kp_com, Kd_com, Ka_com, Kj_com) = (1.64844157e+05, 3.27244115e+04, 2.43611027e+03, 8.06000045e+01) # ploes [-20.29999909 -20.20000804 -20.09999556 -20.00000185]
+        #    (Kp_com, Kd_com, Ka_com, Kj_com) = (2.28323600e+05, 4.76834812e+04, 3.35391925e+03, 9.68316039e+01) # poles 10, 20, 30, 40
+        #    (Kp_com, Kd_com, Ka_com, Kj_com) = (7.78064620e+05, 1.03624061e+05, 5.18844741e+03, 1.16188573e+02) # poles -30
+        #    (Kp_com, Kd_com, Ka_com, Kj_com) = (1.20e+06, 1.54e+05, 7.10e+03, 1.40e+02) # poles [-50. -40. -30. -20.]
+        gains.Kp, gains.Kd, gains.Ka, gains.Kj = 63057.32417634, 21171.16628651,  2076.59405021,    77.91842474 # poles 5, 15, 25, 35
+        return gains
+        
+        
 class TsidFlexibleContact:
     HESSIAN_REGULARIZATION = 1e-8
     
-    def __init__(self,robot,Ky,Kz,w_post,Kp_post,Kp_com, Kd_com, Ka_com, Kj_com, fMin, mu, ddf_max, dt, estimator = None):
+    def __init__(self,robot, Ky, Kz, w_post, Kp_post, gains, fMin, mu, ddf_max, dt, estimator = None):
         self.robot = robot
         self.NQ = robot.model.nq
         self.NV = robot.model.nv
@@ -32,10 +79,10 @@ class TsidFlexibleContact:
         self.w_post = w_post
         self.Kp_post = Kp_post
         self.Kd_post = 2*sqrt(Kp_post)
-        self.Kp_com = Kp_com
-        self.Kd_com = Kd_com
-        self.Ka_com = Ka_com
-        self.Kj_com = Kj_com
+        self.Kp_com = gains.Kp
+        self.Kd_com = gains.Kd
+        self.Ka_com = gains.Ka
+        self.Kj_com = gains.Kj
         self.Ky = Ky
         self.Kz = Kz
         self.fMin = fMin
@@ -191,8 +238,10 @@ class TsidFlexibleContact:
         S  = np.hstack([matlib.zeros([4,3]), matlib.eye(4)]) # (4,7)
         Aec = np.vstack([np.hstack([M ,-Jc.T,-S.T]),
                          np.hstack([matlib.zeros([4,7]), matlib.eye(4), matlib.zeros([4,4])])])
-        bec = np.vstack([-h, f_est])
+#        bec = np.vstack([-h, f_est])
 #        bec = np.vstack([-h, f_meas])
+        # use f+dt/2*df instead of f
+        bec = np.vstack([-h, f_meas + 0.5*self.dt*df_est])
         
  
         # CoM TASK COMPUTATIONS

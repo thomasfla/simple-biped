@@ -12,12 +12,13 @@ from utils.logger import RaiLogger
 import matplotlib.pyplot as plt
 import utils.plot_utils as plut
 from utils.plot_utils import plot_from_logger
+
 from tsid import Tsid
 from tsid_admittance import TsidAdmittance, GainsTsidAdm
 from admittance_ctrl import AdmittanceControl, GainsAdmCtrl
-
-from tsid_flexible_contacts import TsidFlexibleContact
+from tsid_flexible_contacts import TsidFlexibleContact, GainsTsidFlexK
 from tsid_mistry import TsidMistry
+
 from robot_model_path import pkg, urdf
 from utils.noise_utils import NoisyState
 from estimation.momentumEKF import MomentumEKF
@@ -52,7 +53,7 @@ def com_traj(t, c_init, c_final, T):
     return (np.matrix([[py ],[pz]]), np.matrix([[vy ],[vz]]),
             np.matrix([[ay ],[az]]), np.matrix([[jy ],[jz]]), np.matrix([[sy ],[sz]]))
 
-CONTROLLER = 'tsid_adm'             # either 'tsid_rigid' or 'tsid_flex' or 'tsid_adm' or 'tsid_mistry' or 'adm_ctrl'
+CONTROLLER = 'tsid_flex'             # either 'tsid_rigid' or 'tsid_flex' or 'tsid_adm' or 'tsid_mistry' or 'adm_ctrl'
 F_DISTURB = np.matrix([0e3, 0, 0]).T
 COM_SIN_AMP = np.array([0.0, 0.0])
 ZETA = .3   # with zeta=0.03 and ndt=100 it is unstable
@@ -230,14 +231,9 @@ Kd_com = 2*sqrt(Kp_com)         # com derivative feedback gain
 if(CONTROLLER=='tsid_flex'):
     w_post  = 0.3
     ddf_max = 2e4 #4e5 #Kz
-#    (Kp_com, Kd_com, Ka_com, Kj_com) = (10611.05989124,  4182.20596787,   618.10999684,    40.5999999)     # poles [-10.3 -10.2 -10.1  -10.]
-#    (Kp_com, Kd_com, Ka_com, Kj_com) = (52674.83686644, 13908.30537877,  1377.10995895, 60.5999991) # poles [-15.30235117 -15.19247204 -15.10739361 -14.99778229]
-#    (Kp_com, Kd_com, Ka_com, Kj_com) = (1.64844157e+05, 3.27244115e+04, 2.43611027e+03, 8.06000045e+01) # ploes [-20.29999909 -20.20000804 -20.09999556 -20.00000185]
-    (Kp_com, Kd_com, Ka_com, Kj_com) = (63057.32417634, 21171.16628651,  2076.59405021,    77.91842474) # poles 5, 15, 25, 35
-#    (Kp_com, Kd_com, Ka_com, Kj_com) = (2.28323600e+05, 4.76834812e+04, 3.35391925e+03, 9.68316039e+01) # poles 10, 20, 30, 40
-#    (Kp_com, Kd_com, Ka_com, Kj_com) = (7.78064620e+05, 1.03624061e+05, 5.18844741e+03, 1.16188573e+02) # poles -30
-#    (Kp_com, Kd_com, Ka_com, Kj_com) = (1.20e+06, 1.54e+05, 7.10e+03, 1.40e+02) # poles [-50. -40. -30. -20.]
-    tsid = TsidFlexibleContact(robot, Ky, Kz, w_post, Kp_post, Kp_com, Kd_com, Ka_com, Kj_com, fMin, mu_ctrl, ddf_max, dt, centroidalEstimator)
+    if(gains_array is None):    gains = GainsTsidFlexK.get_default_gains(K)
+    else:                       gains = GainsTsidFlexK(gains_array)
+    tsid = TsidFlexibleContact(robot, Ky, Kz, w_post, Kp_post, gains, fMin, mu_ctrl, ddf_max, dt, centroidalEstimator)
 elif(CONTROLLER=='tsid_rigid'):
     w_post  = 1e-2                  # postural task weight
     w_force = 1e-4
