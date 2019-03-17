@@ -114,7 +114,7 @@ def plot_from_logger(logger, dt, streams, labels=None, titles=None, linestyles=N
                     ax[i].plot(time, logger.get_streams(stream), ls, label=label)
             except KeyError:
                 print "[plot_from_logger] Could not find field %s"%(stream)
-        ax[i].legend()
+        ax[i].legend(loc='best')
 
         if titles is not None:
             if isinstance(titles, basestring):
