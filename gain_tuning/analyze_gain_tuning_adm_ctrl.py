@@ -124,9 +124,9 @@ if(not LOAD_DATA):
         test_name = conf.get_test_name(ctrl, zeta, f_dist, w_d4x)
         INPUT_FILE = DATA_DIR + test_name + '/' + DATA_FILE_NAME
         
-        print '\n'+"".center(120, '#')
-        print ("Gonna read %s"%(test_name)).center(120)
-        print "".center(120, '#')
+        print '\n'+"".center(80, '#')
+        print ("Gonna read %s"%(test_name)).center(80)
+        print "".center(80, '#')
             
         # SETUP LOGGER
         data = Empty()
@@ -164,18 +164,20 @@ if(not LOAD_DATA):
             
             fric_cone_viol = np.zeros(N)
             for t in range(f.shape[1]):
-                tmp = np.max(B_f * f[:,t] - b_f)
+                fz = np.maximum([f[1,t], f[1,t], f[3,t], f[3,t]], 1e-3*np.ones(4))
+                tmp = np.max(np.divide(B_f * f[:,t] - b_f, fz))
                 if(tmp>0.0): fric_cone_viol[t] = tmp
             compute_stats_and_add_to_data('fric_cone_viol', fric_cone_viol)
             
             x0_com = np.vstack((com_err[:,0], com_v[:,0], com_a[:,0], com_j[:,0], 0.0*com_s[:,0]))
-            print '1e3*x0_com', 1e3*x0_com.T
+#            print '1e3*x0_com', 1e3*x0_com.T
             x0 = P_pinv * x0_com
         except:
             print "Could not read file", INPUT_FILE
             data.cost_state   = np.nan
             data.cost_control = np.nan
-            data.cost_state_component = 4*[np.nan]        
+            data.cost_state_component = 4*[np.nan]    
+            data.fric_cone_viol_max_err = np.nan
             x0 = conf.x0
             com_ref = np.nan*matlib.zeros((2, N))
             com_p = np.nan*matlib.zeros((2, N))
@@ -210,9 +212,7 @@ if(not LOAD_DATA):
         print 'Expected state cost:    %f'%(data.expected_state_cost)
         print 'Real ctrl cost:         %f'%(data.cost_control)
         print 'Expected ctrl cost:     %f'%(data.expected_control_cost)
-        for i in range(4):
-            print 'Real state component %d cost:        %f'%(i, data.cost_state_component[i])
-            print 'Expected state component %d cost:    %f'%(i, data.expected_state_cost_component[i])
+        print 'Friction cone violation %f'%(data.fric_cone_viol_max_err)
         
         def plot_real_vs_expected_com_state(com_expected, name):
             fi, ax = plt.subplots(5, 1, sharex=True);
