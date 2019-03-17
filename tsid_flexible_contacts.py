@@ -301,7 +301,7 @@ class TsidFlexibleContact:
             new_pos_max = compute_min_q_upper_bound(pos[ind_q], vel[ind_q], B_ddf_max[ind_q])
 #            print "TSID-FLEX WARNING: some forces violate friction cones:", np.where(ind_q)[0], (pos[ind_q]-pos_max[ind_q]).T,
 #            print " old UB", pos_max[ind_q].T, "new UB", new_pos_max.T
-            print "TSID-FLEX WARNING: update B_f_max", np.where(ind_q)[0], "from", pos_max[ind_q].T, "to", new_pos_max.T
+#            print "TSID-FLEX WARNING: update B_f_max", np.where(ind_q)[0], "from", pos_max[ind_q].T, "to", new_pos_max.T
             pos_max[ind_q] = new_pos_max + 1e-6
 #            pos_max[ind_q] = pos[ind_q] + 0.1
             
@@ -309,7 +309,7 @@ class TsidFlexibleContact:
         ind = (B_ddf_stop > B_ddf_max).A1
         if(np.sum(ind)>0):
             self.ind = ind
-            print "TSID-FLEX WARNING: update B_ddf_max", np.where(ind)[0], "from", B_ddf_max[ind].T, "to", B_ddf_stop[ind].T
+#            print "TSID-FLEX WARNING: update B_ddf_max", np.where(ind)[0], "from", B_ddf_max[ind].T, "to", B_ddf_stop[ind].T
             B_ddf_max[ind] = B_ddf_stop[ind]
             
         (B_ddf_LB, B_ddf_UB) = computeAccLimits(pos, vel, pos_min, pos_max, vel_max, B_ddf_max, dt_f, verbose=True, IMPOSE_ACCELERATION_BOUNDS=False)
