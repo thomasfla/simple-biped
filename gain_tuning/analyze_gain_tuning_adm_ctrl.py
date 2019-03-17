@@ -168,7 +168,7 @@ if(not LOAD_DATA):
                 if(tmp>0.0): fric_cone_viol[t] = tmp
             compute_stats_and_add_to_data('fric_cone_viol', fric_cone_viol)
             
-            x0_com = np.vstack((com_err[:,0], com_v[:,0], com_a[:,0], com_j[:,0], com_s[:,0]))
+            x0_com = np.vstack((com_err[:,0], com_v[:,0], com_a[:,0], com_j[:,0], 0.0*com_s[:,0]))
             print '1e3*x0_com', 1e3*x0_com.T
             x0 = P_pinv * x0_com
         except:
