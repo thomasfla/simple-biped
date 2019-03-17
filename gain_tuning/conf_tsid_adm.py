@@ -13,11 +13,7 @@ from __future__ import print_function
 import os
 import numpy as np
 from numpy import matlib
-
 from conf_common import *
-    
-def get_gains_file_name(w_d4x):
-    return GAINS_FILE_NAME+'_w_d4x='+str(w_d4x)+'.npy'
     
 TESTS_DIR_NAME          = 'test_gain_tuning/tsid_amd_w_dx_0_d2x_0_d3x_0/'
 GAINS_FILE_NAME         = 'gains_tsid_adm'
