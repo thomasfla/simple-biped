@@ -26,11 +26,11 @@ import simple_biped.utils.plot_utils as plut
 from simple_biped.admittance_ctrl import GainsAdmCtrl
 from simple_biped.simu import Simu
 from simple_biped.utils.LDS_utils import simulate_ALDS
-from simple_biped.gain_tuning.genetic_tuning import optimize_gains_adm_ctrl, convert_cost_function, GainOptimizeAdmCtrl, compute_projection_to_com_state
+from simple_biped.gain_tuning.tune_gains_adm_ctrl_utils import optimize_gains_adm_ctrl, convert_cost_function, GainOptimizeAdmCtrl, compute_projection_to_com_state
 from simple_biped.hrp2_reduced import Hrp2Reduced
 from simple_biped.robot_model_path import pkg, urdf 
 
-import simple_biped.gain_tuning.adm_ctrl_tuning_conf as conf
+import simple_biped.gain_tuning.conf_adm_ctrl as conf
 
 DATA_DIR                = conf.DATA_DIR + conf.GAINS_DIR_NAME
 OUTPUT_DATA_FILE_NAME   = conf.GAINS_FILE_NAME # 'gains_adm_ctrl'

@@ -22,7 +22,7 @@ from simple_biped.gain_tuning.tune_gains_tsid_adm_utils import convert_tsid_adm_
 from simple_biped.simu import Simu
 import simple_biped.utils.plot_utils as plut
 
-import simple_biped.gain_tuning.tsid_adm_tuning_conf as conf
+import simple_biped.gain_tuning.conf_tsid_adm as conf
 
 import os
 import itertools

@@ -17,7 +17,7 @@ from simple_biped.utils.utils_thomas import compute_stats
 from simple_biped.utils.tsid_utils import createContactForceInequalities
 from simple_biped.utils.regex_dict import RegexDict
 from simple_biped.utils.LDS_utils import simulate_ALDS
-from simple_biped.gain_tuning.genetic_tuning import GainOptimizeAdmCtrl, convert_cost_function, compute_projection_to_com_state
+from simple_biped.gain_tuning.tune_gains_adm_ctrl_utils import GainOptimizeAdmCtrl, convert_cost_function, compute_projection_to_com_state
 from simple_biped.simu import Simu
 from simple_biped.admittance_ctrl import GainsAdmCtrl
 from simple_biped.hrp2_reduced import Hrp2Reduced
@@ -25,7 +25,7 @@ from simple_biped.robot_model_path import pkg, urdf
 import simple_biped.utils.plot_utils as plut
 from simple_biped.utils.utils_thomas import finite_diff
 
-import simple_biped.gain_tuning.adm_ctrl_tuning_conf as conf
+import simple_biped.gain_tuning.conf_adm_ctrl as conf
 
 import os
 import itertools
