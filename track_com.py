@@ -84,7 +84,7 @@ simulation_time = 2.0
 USE_ESTIMATOR = 0                # use real state for controller feedback
 T_DISTURB_BEGIN = 0.10           # Time at which the disturbance starts
 T_DISTURB_END   = 0.101          # Time at which the disturbance ends
-gain_file = None #'/is/am/adelprete/repos/simple_biped/gain_tuning/../data/gains/gains_tsid_adm_w_d4x=1e-09.npy'
+gain_file = '/home/student/repos/simple_biped/data/gains/gains_tsid_flex_k_w_d4x=1e-12.npy' #None
 test_name = None
 
 INPUT_PARAMS = ['controller=', 'com_sin_amp=', 'f_dist=', 'zeta=', 'use_estimator=', 'T=', 'k=', 'gain_file=', 'test_name=']
@@ -369,8 +369,16 @@ if PLOT_FORCES:
     ax[0].plot(tt, -mu_simu*np.array(lgr.simu_lkf_1), 'b:') #, label='left min')
     ax[0].plot(tt,  mu_simu*np.array(lgr.simu_rkf_1), 'r:', label='right bounds')
     ax[0].plot(tt, -mu_simu*np.array(lgr.simu_rkf_1), 'r:') #, label='right min')
-    ax[0].legend()
+#    ax[0].legend()    
     plut.saveFigure('contact_forces_with_friction_bounds')
+    
+    f, ax = plt.subplots(1, 1, sharex=True);
+    ax.plot(tt, np.divide(lgr.simu_lkf_0, lgr.simu_lkf_1), label='left')
+    ax.plot(tt, np.divide(lgr.simu_rkf_0, lgr.simu_rkf_1), label='right')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Force Y / Z')
+    ax.legend(loc='best')
+    plut.saveFigure('contact_forces_ratio')
 
 if(PLOT_FORCES and USE_ESTIMATOR):
     fields, labels, linest = [], [], []
