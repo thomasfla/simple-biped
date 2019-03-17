@@ -22,7 +22,7 @@ def get_gains_file_name(w_d4x):
     
 DATA_DIR                = str(os.path.dirname(os.path.abspath(__file__)))+'/../data/'
 GAINS_DIR_NAME          = 'gains/'
-TESTS_DIR_NAME          = 'test_gain_tuning/tsid_amd_w_dx_0.1_d2x_1e-3_d3x_1e-6/'
+TESTS_DIR_NAME          = 'test_gain_tuning/tsid_amd_w_dx_0_d2x_0_d3x_0/'
 GAINS_FILE_NAME         = 'gains_tsid_adm'
 
 keys                = ['ctrl', 'fDist', 'zeta', 'w_d4x']
@@ -37,9 +37,9 @@ mu                  = 0.3
 T_DISTURB_BEGIN     = 0.0
 
 w_x         = 1.0
-w_dx        = 1e-1 #0.0
-w_d2x       = 1e-3
-w_d3x       = 1e-6
+w_dx        = 0e-1 #0.0
+w_d2x       = 0e-3
+w_d3x       = 0e-6
 w_d4x_list  = np.logspace(-12.0, -6.0, num=7)
 #w_d4x_list  = np.hstack((np.logspace(-10.0, -7.0, num=4)) , [2.5, 5.0]))
 
