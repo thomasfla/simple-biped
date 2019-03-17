@@ -138,8 +138,8 @@ for w_d4x in keys_sorted:
 #    print("Initial cost     {}".format(initial_cost))
     
 #    print("Optimal cost     {}".format(optimal_cost))    
-    print("Optimal cost pos {}".format(optimal_cost_pos[w_d4x]))    
-    print("Optimal cost ddf {}".format(optimal_cost_ddf[w_d4x]))
+    print("Optimal cost state {}".format(optimal_cost_pos[w_d4x]))    
+    print("Optimal cost ctrl  {}".format(optimal_cost_ddf[w_d4x]))
 
     H = gain_optimizer.compute_transition_matrix(gains);
     print("Largest eigenvalues:", np.sort_complex(eigvals(H))[-4:].T)
@@ -152,8 +152,8 @@ plt.figure()
 for w_d4x in keys_sorted:
     plt.plot(optimal_cost_pos[w_d4x], optimal_cost_ddf[w_d4x], ' *', markersize=30, label='w_d4x=%.1e'%(w_d4x))
 plt.legend()
-plt.xlabel('Position tracking cost')
-plt.ylabel('Force acceleration cost')
+plt.xlabel('State tracking cost')
+plt.ylabel('Control cost')
 plt.grid(True);
 plut.saveFigure('roc_adm_ctrl_lin_scale')
 
