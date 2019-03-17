@@ -67,8 +67,9 @@ class TsidAdmittance:
     HESSIAN_REGULARIZATION = 1e-8
     NEGLECT_FRICTION_CONES = False
     
-    def __init__(self, robot, Ky, Kz, w_post, Kp_post, gains, fMin=0.0, mu=0.3, estimator=None):
+    def __init__(self, robot, Ky, Kz, w_post, Kp_post, gains, dt, fMin=0.0, mu=0.3, estimator=None):
         self.robot = robot
+        self.dt = dt
         self.estimator = estimator
         self.NQ = robot.model.nq
         self.NV = robot.model.nv
@@ -184,7 +185,9 @@ class TsidAdmittance:
         Aec = np.vstack([np.hstack([M ,-Jc.T,-S.T]),
                          np.hstack([np.zeros([4,7]) ,np.eye(4),np.zeros([4,4])])])
         # Here it works better to use the measured forces rather than the estimated ones
-        bec = np.vstack([-h, f_meas]) #f_est])
+#        bec = np.vstack([-h, f_meas]) #f_est])
+        # try to use f+dt/2*df instead of f
+        bec = np.vstack([-h, f_meas + 0.5*self.dt*df_est]) #f_est])
 #        bec = np.vstack([-h, f_est])
         
         feet_p = self.Kinv*f_est    # the minus sign is already included in Kinv
