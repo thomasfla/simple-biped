@@ -25,7 +25,7 @@ from simple_biped.tsid_admittance import GainsTsidAdm
 from simple_biped.gain_tuning.tune_gains_tsid_adm_utils import convert_integrator_gains_to_tsid_adm_gains, convert_tsid_adm_gains_to_integrator_gains
 import controlpy
 
-import simple_biped.gain_tuning.tsid_adm_tuning_conf as conf
+import simple_biped.gain_tuning.conf_tsid_adm as conf
 
 DATA_DIR                = conf.DATA_DIR + conf.GAINS_DIR_NAME
 OUTPUT_DATA_FILE_NAME   = conf.GAINS_FILE_NAME # 'gains_adm_ctrl'
