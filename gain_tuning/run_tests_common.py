@@ -31,10 +31,10 @@ def run_tests(conf):
         print("Execute this command:\n", cmd, "\n")
         # start several subprocesses
         processes += [Popen(cmd.split(), stdout=PIPE, stderr=STDOUT, bufsize=1, close_fds=True, universal_newlines=True)]
-        time.sleep(5.)
+        time.sleep(conf.TIME_BETWEEN_TESTS)
         
     # read output
-    timeout = 0.1 # seconds
+    timeout = 1.0 # seconds
     while processes:
         # remove finished processes from the list (O(N**2))
         for p in processes[:]:

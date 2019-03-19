@@ -28,6 +28,8 @@ SAVE_DATA               = 1
 LOAD_DATA               = 1
 SAVE_FIGURES            = 1
 
+TIME_BETWEEN_TESTS  = 10.0
+
 keys                = ['ctrl', 'fDist', 'zeta', 'w_d4x']
 f_dists             = [0.]
 zetas               = [0.3]
