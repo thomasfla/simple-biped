@@ -12,7 +12,7 @@ from __future__ import print_function
 from numpy import matlib
 from conf_common import *
 
-TESTS_DIR_NAME          = 'test_gain_tuning/adm_ctrl_w_dx_0_d2x_0_d3x_0/'
+#TESTS_DIR_NAME          = 'adm_ctrl_w_dx_0_d2x_0_d3x_0/'
 GAINS_FILE_NAME         = 'gains_adm_ctrl'
 controllers             = ['adm_ctrl']
 ctrl_long_name          = 'Adm-Ctrl'

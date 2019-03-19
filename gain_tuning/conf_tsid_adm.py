@@ -11,7 +11,7 @@ Configuration for tuning the gains for TSID-Admittance
 from numpy import matlib
 from conf_common import *
     
-TESTS_DIR_NAME          = 'test_gain_tuning/tsid_amd_w_dx_0_d2x_0_d3x_0/'
+#TESTS_DIR_NAME          = 'test_gain_tuning/tsid_amd_w_dx_0_d2x_0_d3x_0/'
 GAINS_FILE_NAME         = 'gains_tsid_adm'
 controllers             = ['tsid_adm']
 ctrl_long_name          = 'TSID-Adm'

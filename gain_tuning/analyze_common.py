@@ -99,7 +99,7 @@ def analyze_results(conf, compute_system_matrices, P):
     T               = conf.T_simu
     w_d4x_list      = conf.w_d4x_list
     
-    DATA_DIR                = conf.DATA_DIR + conf.TESTS_DIR_NAME
+    DATA_DIR                = conf.DATA_DIR + conf.TESTS_DIR_NAME + conf.controllers[0] +'/'
     GAINS_DIR               = conf.DATA_DIR + conf.GAINS_DIR_NAME
     dt                      = conf.dt_simu    
     plut.SAVE_FIGURES       = conf.SAVE_FIGURES
@@ -291,7 +291,7 @@ if __name__=='__main__':
     
     keys                = conf_list[0].keys 
     w_u_list            = conf_list[0].w_d4x_list
-    plut.FIGURE_PATH    = conf_list[0].DATA_DIR + 'test_gain_tuning/'
+    plut.FIGURE_PATH    = conf_list[0].DATA_DIR + conf_list[0].TESTS_DIR_NAME
     plut.SAVE_FIGURES   = conf_list[0].SAVE_FIGURES
     SHOW_FIGURES        = conf_list[0].do_plots
     
@@ -299,8 +299,8 @@ if __name__=='__main__':
     i = 0
     
     for conf in conf_list:
-        DATA_DIR                = conf.DATA_DIR + conf.TESTS_DIR_NAME
-        f = open(DATA_DIR+conf.OUTPUT_DATA_FILE_NAME+'.pkl', 'rb');
+        DATA_FILE_DIR = conf.DATA_DIR + conf.TESTS_DIR_NAME + conf.controllers[0] +'/'
+        f = open(DATA_FILE_DIR+conf.OUTPUT_DATA_FILE_NAME+'.pkl', 'rb');
         res_list[i] = pickle.load(f); 
         i += 1
         f.close();

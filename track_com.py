@@ -53,7 +53,7 @@ def com_traj(t, c_init, c_final, T):
     return (np.matrix([[py ],[pz]]), np.matrix([[vy ],[vz]]),
             np.matrix([[ay ],[az]]), np.matrix([[jy ],[jz]]), np.matrix([[sy ],[sz]]))
 
-CONTROLLER = 'tsid_flex'             # either 'tsid_rigid' or 'tsid_flex' or 'tsid_adm' or 'tsid_mistry' or 'adm_ctrl'
+CONTROLLER = 'tsid_flex_k'             # either 'tsid_rigid' or 'tsid_flex_k' or 'tsid_adm' or 'tsid_mistry' or 'adm_ctrl'
 F_DISTURB = np.matrix([0e3, 0, 0]).T
 COM_SIN_AMP = np.array([0.0, 0.0])
 ZETA = .3   # with zeta=0.03 and ndt=100 it is unstable
@@ -228,7 +228,7 @@ w_post = 0.001                  # postural task weight
 Kp_post = 10                    # postural task proportional feedback gain
 Kp_com = 50.0                  # com proportional feedback gain
 Kd_com = 2*sqrt(Kp_com)         # com derivative feedback gain
-if(CONTROLLER=='tsid_flex'):
+if(CONTROLLER=='tsid_flex_k'):
     w_post  = 0.3
     ddf_max = 2e4 #4e5 #Kz
     if(gains_array is None):    gains = GainsTsidFlexK.get_default_gains(K)
