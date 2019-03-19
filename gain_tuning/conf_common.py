@@ -22,6 +22,11 @@ def get_gains_file_name(BASE_NAME, w_d4x):
     
 DATA_DIR                = str(os.path.dirname(os.path.abspath(__file__)))+'/../data/'
 GAINS_DIR_NAME          = 'gains/'
+DATA_FILE_NAME          = 'logger_data.npz'
+OUTPUT_DATA_FILE_NAME   = 'summary_data'
+SAVE_DATA               = 1
+LOAD_DATA               = 1
+SAVE_FIGURES            = 1
 
 keys                = ['ctrl', 'fDist', 'zeta', 'w_d4x']
 f_dists             = [0.]
@@ -31,7 +36,7 @@ T_simu              = 2.0
 dt_cost_function    = 1e-2  # time step used for cost function of gain tuning
 dt_simu             = 1e-3  # time step used in simulations
 mu                  = 0.3
-T_DISTURB_BEGIN     = 0.0
+nc                  = 2     # size of CoM vector
 
 w_x         = 1.0
 w_dx        = 0e-1 #0.0

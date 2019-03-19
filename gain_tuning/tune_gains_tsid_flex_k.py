@@ -64,7 +64,7 @@ if(not LOAD_DATA):
         R[0,0] = w_d4x
         gains_4th_order_system, X, closedLoopEigVals = controlpy.synthesis.controller_lqr(A,B,Q,R)
         optimal_gains[w_d4x] = gains_4th_order_system.A1
-        print("Optimal gains:\n", gains_4th_order_system.T)
+        print("Optimal gains:\n", gains_4th_order_system)
     
     print("Total time taken to optimize gains", time.time()-start_time)
     
@@ -84,48 +84,48 @@ if(not LOAD_DATA):
             
 
 # SETUP
-ny          = conf.ny
-Q_pos_sqrt  = np.sqrt(conf.Q_pos)
-R_pos_sqrt  = np.sqrt(conf.R_pos)
-Q_d4x_sqrt  = np.sqrt(conf.Q_d4x)
-R_d4x_sqrt  = np.sqrt(conf.R_d4x)
-Q_sqrt      = np.sqrt(conf.Q_pos)
-R_sqrt      = matlib.zeros((ny,ny))
-T           = conf.T_cost_function
-optimal_cost_pos = {}
-optimal_cost_d4x = {}
-keys_sorted = optimal_gains.keys()
-keys_sorted.sort()
-
-for w_d4x in keys_sorted:
-    K = optimal_gains[w_d4x]
-
-    R_sqrt[0,0] = np.sqrt(w_d4x)    
-    optimal_cost               = compute_weighted_quadratic_state_control_integral_ALDS(A, B, K, x0, T, Q_sqrt, R_sqrt, dt)
-    optimal_cost_pos[w_d4x]    = compute_weighted_quadratic_state_control_integral_ALDS(A, B, K, x0, T, Q_pos_sqrt, R_pos_sqrt, dt)
-    optimal_cost_d4x[w_d4x]    = compute_weighted_quadratic_state_control_integral_ALDS(A, B, K, x0, T, Q_d4x_sqrt, R_d4x_sqrt, dt)
-
-    H = A - B*K  # closed-loop transition matrix    
-    print("".center(100,'#'))
-    print("w_d4x={}".format(w_d4x))
-    print("Optimal cost     {}".format(optimal_cost))
-    print("Optimal cost state {}".format(optimal_cost_pos[w_d4x]))
-    print("Optimal cost ctrl  {}".format(optimal_cost_d4x[w_d4x]))
-    print("Largest eigenvalues:", np.sort_complex(eigvals(H))[-4:].T)
-    
-    if(do_plots):
-        simulate_ALDS(H, x0, dt, N, 1, 0)
-        plt.title("log(w_d4x)=%.1f"%(np.log10(w_d4x)))
-
-plt.figure()
-for w_d4x in keys_sorted:
-    plt.plot(optimal_cost_pos[w_d4x], optimal_cost_d4x[w_d4x], ' *', markersize=30, label='w_d4x='+str(w_d4x))
-plt.legend()
-plt.xscale('log')
-plt.yscale('log')
-plt.xlabel('State tracking cost')
-plt.ylabel('Control cost')
-plt.grid(True);
-
-if(do_plots):    
-    plt.show()
+#ny          = conf.ny
+#Q_pos_sqrt  = np.sqrt(conf.Q_pos)
+#R_pos_sqrt  = np.sqrt(conf.R_pos)
+#Q_d4x_sqrt  = np.sqrt(conf.Q_d4x)
+#R_d4x_sqrt  = np.sqrt(conf.R_d4x)
+#Q_sqrt      = np.sqrt(conf.Q_pos)
+#R_sqrt      = matlib.zeros((ny,ny))
+#T           = conf.T_cost_function
+#optimal_cost_pos = {}
+#optimal_cost_d4x = {}
+#keys_sorted = optimal_gains.keys()
+#keys_sorted.sort()
+#
+#for w_d4x in keys_sorted:
+#    K = optimal_gains[w_d4x]
+#
+#    R_sqrt[0,0] = np.sqrt(w_d4x)    
+#    optimal_cost               = compute_weighted_quadratic_state_control_integral_ALDS(A, B, K, x0, T, Q_sqrt, R_sqrt, dt)
+#    optimal_cost_pos[w_d4x]    = compute_weighted_quadratic_state_control_integral_ALDS(A, B, K, x0, T, Q_pos_sqrt, R_pos_sqrt, dt)
+#    optimal_cost_d4x[w_d4x]    = compute_weighted_quadratic_state_control_integral_ALDS(A, B, K, x0, T, Q_d4x_sqrt, R_d4x_sqrt, dt)
+#
+#    H = A - B*K  # closed-loop transition matrix    
+#    print("".center(100,'#'))
+#    print("w_d4x={}".format(w_d4x))
+#    print("Optimal cost     {}".format(optimal_cost))
+#    print("Optimal cost state {}".format(optimal_cost_pos[w_d4x]))
+#    print("Optimal cost ctrl  {}".format(optimal_cost_d4x[w_d4x]))
+#    print("Largest eigenvalues:", np.sort_complex(eigvals(H))[-4:].T)
+#    
+#    if(do_plots):
+#        simulate_ALDS(H, x0, dt, N, 1, 0)
+#        plt.title("log(w_d4x)=%.1f"%(np.log10(w_d4x)))
+#
+#plt.figure()
+#for w_d4x in keys_sorted:
+#    plt.plot(optimal_cost_pos[w_d4x], optimal_cost_d4x[w_d4x], ' *', markersize=30, label='w_d4x='+str(w_d4x))
+#plt.legend()
+#plt.xscale('log')
+#plt.yscale('log')
+#plt.xlabel('State tracking cost')
+#plt.ylabel('Control cost')
+#plt.grid(True);
+#
+#if(do_plots):    
+#    plt.show()

@@ -71,13 +71,23 @@ class GainOptimizeAdmCtrl(GainOptimizer):
         
         self.nv = robot.model.nv
         self.na = self.nv-ny
+        self.nx = 3*nf+2*ny         # state size
         
-        self.H = matlib.zeros((3*nf+2*ny, 3*nf+2*ny))
+        self.H = matlib.zeros((self.nx, self.nx))
         self.H[:ny, ny:2*ny] = matlib.eye(ny)
         
         self.H_f = matlib.zeros((3*nf,3*nf))
         self.H_f[  :nf,     nf:2*nf] = matlib.eye(nf)
         self.H_f[nf:2*nf, 2*nf:3*nf] = matlib.eye(nf)
+        
+        self.A = matlib.zeros((self.nx, self.nx))
+        self.A[:ny, ny:2*ny]        = matlib.eye(ny)
+        self.A[2*ny:,     2*ny:]    = self.H_f
+        
+        self.B = matlib.zeros((self.nx, nf))
+        self.B[-nf:,:] = matlib.eye(nf)
+        
+        self.Kfb = matlib.zeros((nf, self.nx))
         
         self.update_state(q, v)
         
@@ -111,6 +121,7 @@ class GainOptimizeAdmCtrl(GainOptimizer):
         self.X = np.vstack([X_com, X_am])
         self.X_pinv = np.linalg.pinv(self.X)
         
+        self.A[  ny:2*ny, 2*ny:2*ny+nf] = self.X
         self.H[  ny:2*ny, 2*ny:2*ny+nf] = self.X
         
         self.XT_Mb_inv = self.X.T * np.linalg.inv(M[:ny,:ny])
@@ -124,22 +135,43 @@ class GainOptimizeAdmCtrl(GainOptimizer):
         self.K_A = self.K*A
         self.K_Upsilon = self.K*Upsilon
         
-    def compute_transition_matrix(self, gains_array):
+    def compute_system_matrices(self, gains_array):
         gains = GainsAdmCtrl(gains_array)
         nf, ny = self.nf, self.ny
-        self.H_f[2*nf:,   2*nf:3*nf] = -gains.kd_bar*matlib.eye(nf)
         
-        # compute closed-loop transition matrix
+        # compute gains
         K1 = gains.kp_bar*self.K_A*gains.Kf
         K2 = self.K_Upsilon + gains.kp_bar*matlib.eye(nf)
-        self.H_f[2*nf:,   1*nf:2*nf] = - K2
-#        self.H_f[2*nf:,   0*nf:1*nf] = - (K1 + gains.kd_bar*self.XT_Mb_inv*self.X)
-        self.H_f[2*nf:,   0*nf:1*nf] = - K1
+
+        self.Kfb[:, 2*ny+2*nf:         ] = gains.kd_bar*matlib.eye(nf)        
+        self.Kfb[:, 2*ny+1*nf:2*ny+2*nf] = K2
+#        self.Kfb[:,   2*ny:2*ny+nf] = (K1 + gains.kd_bar*self.XT_Mb_inv*self.X)
+        self.Kfb[:,      2*ny:2*ny+nf  ] = K1
+#        self.Kfb[:,       ny:2*ny]    = (K1*self.X_pinv*gains.Kd_com + gains.kp_bar*self.XT_Mb_inv)
+        self.Kfb[:,        ny:2*ny     ] = K1*self.X_pinv*gains.Kd_com
+        self.Kfb[:,          :ny       ] = K1*self.X_pinv*gains.Kp_com
+
+        return self.A, self.B, self.Kfb
         
-        self.H[2*ny:,     2*ny:]        = self.H_f
-        self.H[ -nf:,         :ny]      = -K1*self.X_pinv*gains.Kp_com
-#        self.H[ -nf:,       ny:2*ny]    = -(K1*self.X_pinv*gains.Kd_com + gains.kp_bar*self.XT_Mb_inv)
-        self.H[ -nf:,       ny:2*ny]    = -K1*self.X_pinv*gains.Kd_com
+    def compute_transition_matrix(self, gains_array):
+        self.compute_system_matrices(gains_array)
+        self.H = self.A - self.B*self.Kfb
+#        return
+#        gains = GainsAdmCtrl(gains_array)
+#        nf, ny = self.nf, self.ny
+#        self.H_f[2*nf:,   2*nf:3*nf] = -gains.kd_bar*matlib.eye(nf)
+#        
+#        # compute closed-loop transition matrix
+#        K1 = gains.kp_bar*self.K_A*gains.Kf
+#        K2 = self.K_Upsilon + gains.kp_bar*matlib.eye(nf)
+#        self.H_f[2*nf:,   1*nf:2*nf] = - K2
+##        self.H_f[2*nf:,   0*nf:1*nf] = - (K1 + gains.kd_bar*self.XT_Mb_inv*self.X)
+#        self.H_f[2*nf:,   0*nf:1*nf] = - K1
+#        
+#        self.H[2*ny:,     2*ny:]        = self.H_f
+#        self.H[ -nf:,         :ny]      = -K1*self.X_pinv*gains.Kp_com
+##        self.H[ -nf:,       ny:2*ny]    = -(K1*self.X_pinv*gains.Kd_com + gains.kp_bar*self.XT_Mb_inv)
+#        self.H[ -nf:,       ny:2*ny]    = -K1*self.X_pinv*gains.Kd_com
         return self.H
         
     def cost_function(self, normalized_gains):
@@ -188,6 +220,16 @@ def compute_projection_to_com_state():
     SA      = np.hstack((np.eye(nl), np.eye(nl)))               # matrix adding forces
     P       = np.matrix((1.0/m)*block_diag(S, S, SA, SA, SA))   # projection from full state to CoM state
     return P
+    
+def compute_projection_to_com_state_ctrl():
+    nl = 2
+    ny = 3
+    robot   = Hrp2Reduced(urdf, [pkg], loadModel=0, useViewer=0)
+    m       = np.sum([robot.model.inertias[i].mass for i in range(1,len(robot.model.inertias))])
+    S       = np.hstack((np.eye(nl), np.zeros((nl,ny-nl))))     # matrix selecting CoM from x
+    SA      = np.hstack((np.eye(nl), np.eye(nl)))               # matrix adding forces
+    P       = np.matrix((1.0/m)*block_diag(S, S, SA, SA, SA))   # projection from full state to CoM state
+    return np.hstack([P, matlib.zeros((5*nl, 2*nl))])
     
 def convert_cost_function(w_x, w_dx, w_d2x, w_d3x, w_d4x):
     ''' Convert the cost function of the CoM state in the cost function
@@ -254,7 +296,26 @@ if __name__=='__main__':
     x0          = matlib.zeros((3*nf+2*ny,1))
     x0[ny,0]    = .0765     # initial CoM velocity in Y direction
     
+    ny = 3
+    nf = 4
+    ss = 3*nf+2*ny
+    if x0 is None:
+        x0 = matlib.zeros((ss,1))
+        x0[0,0] = 1.0
     Q = convert_cost_function(w_x, w_dx, w_d2x, w_d3x, w_d4x)
+    
+    # SETUP
+#    robot   = Hrp2Reduced(urdf, [pkg], loadModel=0, useViewer=0)
+#    q       = robot.q0.copy()
+#    v       = zero(robot.model.nv)
+#    K       = Simu.get_default_contact_stiffness()
+#    gains_array   = GainsAdmCtrl.get_default_gains(K).to_array()
+#    gain_optimizer = GainOptimizeAdmCtrl(robot, q, v, K, ny, nf, gains_array, dt, x0, N, Q)
+#    H = gain_optimizer.compute_transition_matrix(gains_array)
+#    A, B, K = gain_optimizer.compute_system_matrices(gains_array)
+#    H2 = A - B*K
+#    print "H - (A-BK)\n", 1e9*np.max(np.abs(H-H2))
+    
     optimal_gains = optimize_gains_adm_ctrl(Q, N, dt, max_iter, x0=x0, do_plots=do_plots)
     
     print "Initial gains:\n", GainsAdmCtrl.get_default_gains(Simu.get_default_contact_stiffness()).to_string()

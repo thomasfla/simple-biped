@@ -10,9 +10,6 @@ and saves the gains in binary files.
 
 #!/usr/bin/env python
 from __future__ import print_function
-import itertools
-from select     import select
-from subprocess import Popen, PIPE, STDOUT
 
 import os
 import time
@@ -26,7 +23,7 @@ import simple_biped.utils.plot_utils as plut
 from simple_biped.admittance_ctrl import GainsAdmCtrl
 from simple_biped.simu import Simu
 from simple_biped.utils.LDS_utils import simulate_ALDS
-from simple_biped.gain_tuning.tune_gains_adm_ctrl_utils import optimize_gains_adm_ctrl, convert_cost_function, GainOptimizeAdmCtrl, compute_projection_to_com_state
+from simple_biped.gain_tuning.tune_gains_adm_ctrl_utils import optimize_gains_adm_ctrl, convert_cost_function, GainOptimizeAdmCtrl
 from simple_biped.hrp2_reduced import Hrp2Reduced
 from simple_biped.robot_model_path import pkg, urdf 
 
@@ -36,7 +33,7 @@ DATA_DIR                = conf.DATA_DIR + conf.GAINS_DIR_NAME
 OUTPUT_DATA_FILE_NAME   = conf.GAINS_FILE_NAME # 'gains_adm_ctrl'
 SAVE_DATA               = 1
 LOAD_DATA               = 0 # if 1 it tries to load the gains from the specified binary file
-N                       = int(conf.T_genetic/conf.dt_genetic)
+N                       = int(conf.T_cost_function/conf.dt_cost_function)
 dt                      = conf.dt_cost_function
 w_d4x_list              = conf.w_d4x_list
 x0                      = conf.x0
@@ -66,7 +63,7 @@ if(not LOAD_DATA):
     optimal_gains = {}
     start_time = time.time()
     for w_d4x in w_d4x_list:
-        print("".center(100,'#'))
+        print("".center(60,'#'))
         print("Tuning gains for w_d4x={}".format(w_d4x))
         Q = convert_cost_function(conf.w_x, conf.w_dx, conf.w_d2x, conf.w_d3x, w_d4x)
         optimal_gains[w_d4x] = optimize_gains_adm_ctrl(Q, N, dt, conf.max_iter, x0, initial_guess, do_plots=0)

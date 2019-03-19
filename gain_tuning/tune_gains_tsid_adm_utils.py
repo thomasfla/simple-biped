@@ -9,6 +9,7 @@ Created on Thu Jul  5 14:41:32 2018
 
 import numpy as np
 import numpy.ma as ma
+from numpy import matlib
 from math import sqrt
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
@@ -39,13 +40,14 @@ def convert_integrator_gains_to_tsid_adm_gains(gains_integrator, K, const = 100.
         print "\nCorresponding gains for admittance control:\n", gains.to_string()
     return gains
 
-def convert_tsid_adm_gains_to_integrator_gains(gains_tsid_adm, K):
+def convert_tsid_adm_gains_to_integrator_gains(gains_tsid_adm, K, n=1):
     const = gains_tsid_adm.Kf[0,0]*K[0,0]
-    K4 = gains_tsid_adm.Kd_adm
-    K3 = (1+const)*gains_tsid_adm.Kp_adm
-    K2 = (const*gains_tsid_adm.Kp_adm)*gains_tsid_adm.Kd_com 
-    K1 = (const*gains_tsid_adm.Kp_adm)*gains_tsid_adm.Kp_com
-    return np.matrix([[K1, K2, K3, K4]])
+    In = matlib.eye(n)
+    K4 = gains_tsid_adm.Kd_adm * In
+    K3 = (1+const)*gains_tsid_adm.Kp_adm * In
+    K2 = (const*gains_tsid_adm.Kp_adm)*gains_tsid_adm.Kd_com * In
+    K1 = (const*gains_tsid_adm.Kp_adm)*gains_tsid_adm.Kp_com * In
+    return np.hstack([K1, K2, K3, K4])
 
 def compute_adm_ctrl_vel_gains(gains_3rd_order_integrator, K, dt, verbose=False):
     ''' This never worked well. Not clear why. '''
