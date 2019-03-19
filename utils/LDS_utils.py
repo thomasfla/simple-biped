@@ -87,15 +87,18 @@ def compute_integrator_dynamics(K):
             A: state transition matrix
             B: control input matrix
     '''
-    n = K.shape[1]
-    H = matlib.zeros((n,n))
-    A = matlib.zeros((n,n))
-    B = matlib.zeros((n,1))    
-    H[-1,:] = -K
-    B[-1,0] = 1.0
+    
+    m = K.shape[0]      # size of pos vector
+    n = K.shape[1]/m    # integrator order
+    H = matlib.zeros((m*n,m*n))
+    A = matlib.zeros((m*n,m*n))
+    B = matlib.zeros((m*n,m))    
+    H[-m:,:] = -K
+    I = matlib.eye(m)
+    B[-m:,:] = I
     for i in range(n-1):
-        H[i,i+1] = 1.0
-        A[i,i+1] = 1.0
+        H[m*i:m*(i+1), m*(i+1):m*(i+2)] = I
+        A[m*i:m*(i+1), m*(i+1):m*(i+2)] = I
     return (H, A, B);
 
 
