@@ -1,5 +1,6 @@
 from pinocchio.utils import *
 import matplotlib.pyplot as plt
+import numpy as np
 
 try:
     from IPython import embed
@@ -89,10 +90,10 @@ if __name__ == '__main__':
 
     for i in range(log_size):
         t = i*dt
-        q=np.matrix(np.zeros(8)).T  + np.sin(t*2*np.pi*2.0)
+        q=np.matrix(np.zeros(8)).T  + 0.1*np.sin(t*2*np.pi*2.0)
         v=np.matrix(np.zeros(7)).T  + np.sin(t*2*np.pi*2.0)
-        f=np.matrix(np.zeros(4)).T  + np.sin(t*2*np.pi*2.0)
-        df=np.matrix(np.zeros(4)).T + np.sin(t*2*np.pi*2.0)
+        f=np.matrix(np.zeros(4)).T  + 10*np.sin(t*2*np.pi*2.0)
+        df=np.matrix(np.zeros(4)).T + 100*np.sin(t*2*np.pi*2.0)
         
         q_noisy,v_noisy,f_noisy,df_noisy = ns.get_noisy_state(q,v,f,df)
         
@@ -111,5 +112,5 @@ if __name__ == '__main__':
     plt.plot(log_f)
     plt.plot(log_f_noisy)
     plt.show()
-    embed()
+#    embed()
     

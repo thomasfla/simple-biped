@@ -71,7 +71,7 @@ PLOT_COM_TRACKING                   = 1
 PLOT_COM_SNAP                       = 0
 PLOT_CONTACT_POINT_ACC              = 0
 PLOT_ANGULAR_MOMENTUM_DERIVATIVES   = 0
-PLOT_JOINT_TORQUES                  = 0
+PLOT_JOINT_TORQUES                  = 1
 PLOT_JOINT_ANGLES                   = 0
 plut.SAVE_FIGURES                   = 1
 SAVE_DATA                           = 1
@@ -81,10 +81,10 @@ SHOW_FIGURES                        = 0
 dt  = 1e-3
 ndt = 10
 simulation_time = 2.0
-USE_ESTIMATOR = 0                # use real state for controller feedback
+USE_ESTIMATOR = 1                # use real state for controller feedback
 T_DISTURB_BEGIN = 0.10           # Time at which the disturbance starts
 T_DISTURB_END   = 0.101          # Time at which the disturbance ends
-gain_file = '/home/student/repos/simple_biped/data/gains/gains_tsid_flex_k_w_d4x=1e-12.npy' #None
+gain_file = '/home/student/repos/simple_biped/data/gains/gains_tsid_flex_k_w_d4x=1e-09.npy' #None
 test_name = None
 
 INPUT_PARAMS = ['controller=', 'com_sin_amp=', 'f_dist=', 'zeta=', 'use_estimator=', 'T=', 'k=', 'gain_file=', 'test_name=']
@@ -204,7 +204,7 @@ ns = NoisyState(dt,robot,Ky,Kz)
 # noise standard deviation
 n_x, n_u, n_y = 9+4, 4, 9
 sigma_x_0 = 1e-2                    # initial state estimate std dev
-sigma_ddf   = 1e2*np.ones(4)          # control (i.e. force accelerations) noise std dev used in EKF
+sigma_ddf   = 1e4*np.ones(4)          # control (i.e. force accelerations) noise std dev used in EKF
 if(CONTROLLER=='tsid_adm'):
     sigma_ddf   = 1e4*np.ones(4)          # control (i.e. force accelerations) noise std dev used in EKF
 sigma_f     = np.array([ns.std_fy, ns.std_fz, ns.std_fy, ns.std_fz])  # force measurement noise std dev
@@ -281,10 +281,10 @@ if CONTROLLER=='tsid_rigid' or CONTROLLER=='tsid_adm' or CONTROLLER=='adm_ctrl':
 if CONTROLLER=='tsid_mistry':
     tsid_var_names += ['com_j_des', 'com_j_exp', 'df_des']
     tsid_var_types += [     vc    ,   vc       ,    vc]
-if CONTROLLER=='tsid_flex' or CONTROLLER=='tsid_mistry':
+if CONTROLLER=='tsid_flex_k' or CONTROLLER=='tsid_mistry':
     tsid_var_names += [ 'lf_a_des', 'rf_a_des']
     tsid_var_types += [     vc,         vc    ]
-if CONTROLLER=='tsid_flex':
+if CONTROLLER=='tsid_flex_k':
     #Integral of angular momentum approximated by base orientation, angular momentum, its 1st and 2nd derivative, its desired 3rd derivative
     tsid_var_names += ['iam', 'dddam_des', 'robotInertia']
     tsid_var_types += 3*[vr,]
@@ -491,7 +491,7 @@ if PLOT_COM_ESTIMATION and USE_ESTIMATOR:
 if CONTROLLER=='tsid_mistry':
     plot_from_logger(lgr, dt, [['tsid_com_j_des_'+str(i), 'tsid_com_j_exp_'+str(i), 'simu_com_j_'+str(i)] for i in range(1)], linestyles=[[None,'--',':']]*2)
     plot_from_logger(lgr, dt, [['tsid_df_des_'+str(i), 'simu_df_'+str(i)] for i in range(4)], linestyles=[[None,'--']]*4, ncols=2)
-elif CONTROLLER=='tsid_flex' and PLOT_COM_SNAP:
+elif CONTROLLER=='tsid_flex_k' and PLOT_COM_SNAP:
     plot_from_logger(lgr, dt, [['tsid_com_s_des_'+str(i), 'tsid_com_s_exp_'+str(i), 'simu_com_s_'+str(i)] for i in range(2)], linestyles=[[None,'--',':']]*2)
 
 if PLOT_ANGULAR_MOMENTUM_DERIVATIVES:
@@ -516,8 +516,3 @@ if(SAVE_DATA):
 
 if(SHOW_FIGURES):
     plt.show()
-
-try:
-    embed()
-except:
-    pass;

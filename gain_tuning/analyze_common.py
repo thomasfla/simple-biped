@@ -207,6 +207,7 @@ def analyze_results(conf, compute_system_matrices, P):
                 data.cost_control = np.nan
                 data.cost_state_component = 4*[np.nan]    
                 data.fric_cone_viol_max_err = np.nan
+                time = np.arange(N*dt, step=dt)
                 xu0 = conf.x0
                 com_real = np.nan*matlib.zeros((5*nc, N))
             
@@ -313,6 +314,7 @@ if __name__=='__main__':
             tmp = res.get_matching(keys, [None, None, None, w_u]).next()
             if i==0:    lbl = conf.ctrl_long_name
             else:       lbl = ''
+            if tmp.cost_control>1e6: tmp.cost_control = 1e6
             plt.plot(tmp.cost_state, tmp.cost_control, ' '+mark, color=color, markersize=30, label=lbl)
         plt.legend()
         plt.grid(True);
@@ -330,6 +332,8 @@ if __name__=='__main__':
             else:       lbl = ''
             if(tmp.fric_cone_viol_max_err<1e-3):
                 tmp.fric_cone_viol_max_err = 1e-3
+            elif tmp.fric_cone_viol_max_err>1e6: 
+                tmp.fric_cone_viol_max_err = 1e6
             plt.plot(tmp.cost_state, tmp.fric_cone_viol_max_err, ' '+mark, color=color, markersize=30, label=lbl)
         plt.legend()
         plt.grid(True);

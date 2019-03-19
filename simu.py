@@ -6,6 +6,7 @@ from hrp2_reduced import Hrp2Reduced
 import time 
 from utils.utils_thomas import restert_viewer_server
 from utils.tsid_utils import createContactForceInequalities
+import numpy as np
 from numpy import matlib
 from numpy.linalg import norm
 
