@@ -145,10 +145,10 @@ class GainOptimizeAdmCtrl(GainOptimizer):
 
         self.Kfb[:, 2*ny+2*nf:         ] = gains.kd_bar*matlib.eye(nf)        
         self.Kfb[:, 2*ny+1*nf:2*ny+2*nf] = K2
-#        self.Kfb[:,   2*ny:2*ny+nf] = (K1 + gains.kd_bar*self.XT_Mb_inv*self.X)
-        self.Kfb[:,      2*ny:2*ny+nf  ] = K1
-#        self.Kfb[:,       ny:2*ny]    = (K1*self.X_pinv*gains.Kd_com + gains.kp_bar*self.XT_Mb_inv)
-        self.Kfb[:,        ny:2*ny     ] = K1*self.X_pinv*gains.Kd_com
+        self.Kfb[:,      2*ny:2*ny+nf  ] = (K1 + gains.kd_bar*self.XT_Mb_inv*self.X)
+#        self.Kfb[:,      2*ny:2*ny+nf  ] = K1
+        self.Kfb[:,        ny:2*ny     ] = (K1*self.X_pinv*gains.Kd_com + gains.kp_bar*self.XT_Mb_inv)
+#        self.Kfb[:,        ny:2*ny     ] = K1*self.X_pinv*gains.Kd_com
         self.Kfb[:,          :ny       ] = K1*self.X_pinv*gains.Kp_com
 
         return self.A, self.B, self.Kfb
@@ -156,22 +156,6 @@ class GainOptimizeAdmCtrl(GainOptimizer):
     def compute_transition_matrix(self, gains_array):
         self.compute_system_matrices(gains_array)
         self.H = self.A - self.B*self.Kfb
-#        return
-#        gains = GainsAdmCtrl(gains_array)
-#        nf, ny = self.nf, self.ny
-#        self.H_f[2*nf:,   2*nf:3*nf] = -gains.kd_bar*matlib.eye(nf)
-#        
-#        # compute closed-loop transition matrix
-#        K1 = gains.kp_bar*self.K_A*gains.Kf
-#        K2 = self.K_Upsilon + gains.kp_bar*matlib.eye(nf)
-#        self.H_f[2*nf:,   1*nf:2*nf] = - K2
-##        self.H_f[2*nf:,   0*nf:1*nf] = - (K1 + gains.kd_bar*self.XT_Mb_inv*self.X)
-#        self.H_f[2*nf:,   0*nf:1*nf] = - K1
-#        
-#        self.H[2*ny:,     2*ny:]        = self.H_f
-#        self.H[ -nf:,         :ny]      = -K1*self.X_pinv*gains.Kp_com
-##        self.H[ -nf:,       ny:2*ny]    = -(K1*self.X_pinv*gains.Kd_com + gains.kp_bar*self.XT_Mb_inv)
-#        self.H[ -nf:,       ny:2*ny]    = -K1*self.X_pinv*gains.Kd_com
         return self.H
         
     def cost_function(self, normalized_gains):

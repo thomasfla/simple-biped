@@ -152,8 +152,7 @@ plt.legend()
 plt.xlabel('State tracking cost')
 plt.ylabel('Control cost')
 plt.grid(True);
-plut.saveFigure('roc_adm_ctrl_lin_scale')
-
+#plut.saveFigure('roc_adm_ctrl_lin_scale')
 plt.xscale('log')
 plt.yscale('log')
 plut.saveFigure('roc_adm_ctrl_log_scale')
