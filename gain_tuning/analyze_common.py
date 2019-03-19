@@ -280,3 +280,65 @@ def analyze_results(conf, compute_system_matrices, P):
     if(SHOW_FIGURES):
         plt.show()
 
+
+if __name__=='__main__':
+    import simple_biped.gain_tuning.conf_adm_ctrl as conf_adm_ctrl
+    import simple_biped.gain_tuning.conf_tsid_adm as conf_tsid_adm
+    import simple_biped.gain_tuning.conf_tsid_flex_k as conf_tsid_flex_k
+    
+    conf_list = [conf_adm_ctrl, conf_tsid_adm, conf_tsid_flex_k]
+    marker_list = ['+', '*', 'x']
+    
+    keys                = conf_list[0].keys 
+    w_u_list            = conf_list[0].w_d4x_list
+    plut.FIGURE_PATH    = conf_list[0].DATA_DIR + 'test_gain_tuning/'
+    plut.SAVE_FIGURES   = conf_list[0].SAVE_FIGURES
+    SHOW_FIGURES        = conf_list[0].do_plots
+    
+    res_list = len(conf_list)*[None]
+    i = 0
+    
+    for conf in conf_list:
+        DATA_DIR                = conf.DATA_DIR + conf.TESTS_DIR_NAME
+        f = open(DATA_DIR+conf.OUTPUT_DATA_FILE_NAME+'.pkl', 'rb');
+        res_list[i] = pickle.load(f); 
+        i += 1
+        f.close();
+        
+    plt.figure()
+    prop_cycle = plt.rcParams['axes.prop_cycle']
+    colors = prop_cycle.by_key()['color']
+    for (conf, res, mark) in zip(conf_list, res_list, marker_list):
+        for (i, (w_u, color)) in enumerate(zip(w_u_list, colors)):
+            tmp = res.get_matching(keys, [None, None, None, w_u]).next()
+            if i==0:    lbl = conf.ctrl_long_name
+            else:       lbl = ''
+            plt.plot(tmp.cost_state, tmp.cost_control, ' '+mark, color=color, markersize=30, label=lbl)
+        plt.legend()
+        plt.grid(True);
+        plt.xlabel(r'State cost')
+        plt.ylabel(r'Control cost')
+        plt.xscale('log')
+        plt.yscale('log')
+        plut.saveFigure('roc_performance_comparison')
+        
+    plt.figure()
+    for (conf, res, mark) in zip(conf_list, res_list, marker_list):
+        for (i, (w_u, color)) in enumerate(zip(w_u_list, colors)):
+            tmp = res.get_matching(keys, [None, None, None, w_u]).next()
+            if i==0:    lbl = conf.ctrl_long_name
+            else:       lbl = ''
+            if(tmp.fric_cone_viol_max_err<1e-3):
+                tmp.fric_cone_viol_max_err = 1e-3
+            plt.plot(tmp.cost_state, tmp.fric_cone_viol_max_err, ' '+mark, color=color, markersize=30, label=lbl)
+        plt.legend()
+        plt.grid(True);
+        plt.xlabel(r'State cost')
+        plt.ylabel(r'Friction violation')
+        plt.xscale('log')
+        plt.yscale('log')
+        plut.saveFigure('roc_friction_violation_comparison')
+        
+    plt.show()
+
+    

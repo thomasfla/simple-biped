@@ -14,6 +14,7 @@ from conf_common import *
 TESTS_DIR_NAME          = 'test_gain_tuning/tsid_amd_w_dx_0_d2x_0_d3x_0/'
 GAINS_FILE_NAME         = 'gains_tsid_adm'
 controllers             = ['tsid_adm']
+ctrl_long_name          = 'TSID-Adm'
 
 ny          = 2     # size of configuration vector (i.e. com)
 nf          = 4

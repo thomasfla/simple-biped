@@ -15,6 +15,7 @@ from conf_common import *
 TESTS_DIR_NAME          = 'test_gain_tuning/adm_ctrl_w_dx_0_d2x_0_d3x_0/'
 GAINS_FILE_NAME         = 'gains_adm_ctrl'
 controllers             = ['adm_ctrl']
+ctrl_long_name          = 'Adm-Ctrl'
 
 ny          = 3     # size of configuration vector (i.e. momentum)
 nf          = 4     # size of the force vector
