@@ -285,14 +285,9 @@ def analyze_results(conf, compute_system_matrices, P):
         plt.show()
 
 
-if __name__=='__main__':
-    import simple_biped.gain_tuning.conf_adm_ctrl as conf_adm_ctrl
-    import simple_biped.gain_tuning.conf_tsid_adm as conf_tsid_adm
-    import simple_biped.gain_tuning.conf_tsid_flex_k as conf_tsid_flex_k
-    
-    conf_list = [conf_adm_ctrl, conf_tsid_adm, conf_tsid_flex_k]
-    marker_list = ['+', '*', 'x']
-    
+def compare_controllers(conf_list, marker_list):   
+    MAX_STATE_COST   = 1.0
+    MAX_CONTROL_COST = 1e6
     keys                = conf_list[0].keys 
     w_u_list            = conf_list[0].w_d4x_list
     plut.FIGURE_PATH    = conf_list[0].DATA_DIR + conf_list[0].TESTS_DIR_NAME
@@ -313,40 +308,63 @@ if __name__=='__main__':
     prop_cycle = plt.rcParams['axes.prop_cycle']
     colors = prop_cycle.by_key()['color']
     for (conf, res, mark) in zip(conf_list, res_list, marker_list):
+        label_done = False
         for (i, (w_u, color)) in enumerate(zip(w_u_list, colors)):
             tmp = res.get_matching(keys, [None, None, None, w_u]).next()
-            if i==0:    lbl = conf.ctrl_long_name
-            else:       lbl = ''
-            if tmp.cost_control>1e6: tmp.cost_control = 1e6
-            plt.plot(tmp.cost_state, tmp.cost_control, ' '+mark, color=color, markersize=30, label=lbl)
+            if tmp.cost_state>MAX_STATE_COST:       
+                tmp.cost_state = np.nan
+            if tmp.cost_control>MAX_CONTROL_COST:   
+                tmp.cost_control = MAX_CONTROL_COST
+                
+            if not label_done:
+                lbl = conf.ctrl_long_name
+                label_done = True
+            else:       
+                lbl = ''            
+            plt.plot(tmp.cost_state, tmp.cost_control, ' '+mark, color=color, markersize=30, alpha = 0.75, label=lbl)
         plt.legend()
         plt.grid(True);
         plt.xlabel(r'State cost')
         plt.ylabel(r'Control cost')
         plt.xscale('log')
         plt.yscale('log')
+        plt.xlim(8e-4, MAX_STATE_COST)
+        plt.ylim(9.0,  1.3*MAX_CONTROL_COST)
         plut.saveFigure('roc_performance_comparison')
         
-    plt.figure()
-    for (conf, res, mark) in zip(conf_list, res_list, marker_list):
-        for (i, (w_u, color)) in enumerate(zip(w_u_list, colors)):
-            tmp = res.get_matching(keys, [None, None, None, w_u]).next()
-            if i==0:    lbl = conf.ctrl_long_name
-            else:       lbl = ''
-            if(tmp.fric_cone_viol_max_err<1e-3):
-                tmp.fric_cone_viol_max_err = 1e-3
-            elif tmp.fric_cone_viol_max_err>1e6: 
-                tmp.fric_cone_viol_max_err = 1e6
-            plt.plot(tmp.cost_state, tmp.fric_cone_viol_max_err, ' '+mark, color=color, markersize=30, label=lbl)
-        plt.legend()
-        plt.grid(True);
-        plt.xlabel(r'State cost')
-        plt.ylabel(r'Friction violation')
-        plt.xscale('log')
-        plt.yscale('log')
-        plut.saveFigure('roc_friction_violation_comparison')
+#    plt.figure()
+#    for (conf, res, mark) in zip(conf_list, res_list, marker_list):
+#        for (i, (w_u, color)) in enumerate(zip(w_u_list, colors)):
+#            tmp = res.get_matching(keys, [None, None, None, w_u]).next()
+#            if i==0:    lbl = conf.ctrl_long_name
+#            else:       lbl = ''
+#            if(tmp.fric_cone_viol_max_err<1e-3):
+#                tmp.fric_cone_viol_max_err = 1e-3
+#            elif tmp.fric_cone_viol_max_err>1e6: 
+#                tmp.fric_cone_viol_max_err = 1e6
+#            plt.plot(tmp.cost_state, tmp.fric_cone_viol_max_err, ' '+mark, color=color, markersize=30, label=lbl)
+#        plt.legend()
+#        plt.grid(True);
+#        plt.xlabel(r'State cost')
+#        plt.ylabel(r'Friction violation')
+#        plt.xscale('log')
+#        plt.yscale('log')
+#        plut.saveFigure('roc_friction_violation_comparison')
      
     if(SHOW_FIGURES):
         plt.show()
 
+
+if __name__=='__main__':
+    import simple_biped.gain_tuning.conf_adm_ctrl as conf_adm_ctrl
+    import simple_biped.gain_tuning.conf_tsid_adm as conf_tsid_adm
+    import simple_biped.gain_tuning.conf_tsid_flex_k as conf_tsid_flex_k
+    
+    conf_list = [conf_adm_ctrl, conf_tsid_adm, conf_tsid_flex_k]
+    marker_list = ['+', '*', 'x']
+    
+#    conf_list = [conf_tsid_adm, conf_tsid_flex_k]
+#    marker_list = ['*', 'x']
+    
+    compare_controllers(conf_list, marker_list)
     

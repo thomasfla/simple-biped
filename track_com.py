@@ -53,7 +53,7 @@ def com_traj(t, c_init, c_final, T):
     return (np.matrix([[py ],[pz]]), np.matrix([[vy ],[vz]]),
             np.matrix([[ay ],[az]]), np.matrix([[jy ],[jz]]), np.matrix([[sy ],[sz]]))
 
-CONTROLLER = 'tsid_flex_k'             # either 'tsid_rigid' or 'tsid_flex_k' or 'tsid_adm' or 'tsid_mistry' or 'adm_ctrl'
+CONTROLLER = 'adm_ctrl'             # either 'tsid_rigid' or 'tsid_flex_k' or 'tsid_adm' or 'tsid_mistry' or 'adm_ctrl'
 F_DISTURB = np.matrix([0e3, 0, 0]).T
 COM_SIN_AMP = np.array([0.0, 0.0])
 ZETA = .3   # with zeta=0.03 and ndt=100 it is unstable
@@ -61,7 +61,8 @@ k = 1.0
 mu_simu = 0.3    # contact force friction coefficient
 mu_ctrl = 0.3    # contact force friction coefficient
 fMin = 10.0
-tauc = 0.*np.array([1.,1.,1.,1.])    # coulomb friction
+tauc = 0*0.4*np.array([1.,10.,1.,10.])    # coulomb friction 'right hip', 'right knee', 'left hip', 'left knee'
+JOINT_TORQUES_CUT_FREQUENCY = 30.0
 
 PLOT_FORCES                         = 1
 PLOT_FORCE_VEL                      = 0
@@ -81,10 +82,10 @@ SHOW_FIGURES                        = 0
 dt  = 1e-3
 ndt = 10
 simulation_time = 2.0
-USE_ESTIMATOR = 1                # use real state for controller feedback
+USE_ESTIMATOR = 0                # use real state for controller feedback
 T_DISTURB_BEGIN = 0.10           # Time at which the disturbance starts
 T_DISTURB_END   = 0.101          # Time at which the disturbance ends
-gain_file = '/home/student/repos/simple_biped/data/gains/gains_tsid_flex_k_w_d4x=1e-11.npy' #None
+gain_file = None #'/home/student/repos/simple_biped/data/gains/gains_tsid_flex_k_w_d4x=1e-10.npy' #None
 test_name = None
 
 INPUT_PARAMS = ['controller=', 'com_sin_amp=', 'f_dist=', 'zeta=', 'use_estimator=', 'T=', 'k=', 'gain_file=', 'test_name=']
@@ -173,6 +174,7 @@ simu.tauc = tauc
 simu.Krf, simu.Klf = Kspring, Kspring
 simu.Brf, simu.Blf = Bspring, Bspring
 simu.enable_friction_cones(mu_simu)
+simu.joint_torques_cut_frequency = JOINT_TORQUES_CUT_FREQUENCY
 
 #initial state
 #q0 = robot.q0.copy()
@@ -297,7 +299,8 @@ else:
     tsid_var_types += [vc]
 lgr.auto_log_variables(tsid.data, tsid_var_names, tsid_var_types, 'tsid')
 
-lgr.auto_log_variables(simu, ['q', 'v', 'dv', 'com_p', 'com_v', 'com_a', 'com_j', 'com_s', 'vlf', 'vrf', 'acc_lf', 'acc_rf', 'df', 'ddf'], 14*[vc,], 'simu')
+lgr.auto_log_variables(simu, ['q', 'v', 'dv', 'tauq', 'vlf', 'vrf', 'acc_lf', 'acc_rf', 'df', 'ddf'], 10*[vc,], 'simu')
+lgr.auto_log_variables(simu, ['com_p', 'com_v', 'com_a', 'com_j', 'com_s'], 5*[vc,], 'simu')
 lgr.auto_log_variables(simu, ['am', 'dam', 'ddam'], 3*[vr,], 'simu')
 lgr.auto_log_variables(simu, ['f'], [vc], log_var_names=[['simu_'+s for s in ['lkf_0', 'lkf_1', 'rkf_0', 'rkf_1']]])
 
@@ -499,7 +502,9 @@ if PLOT_ANGULAR_MOMENTUM_DERIVATIVES:
     plut.saveFigure('angular_momentum')
 
 if(PLOT_JOINT_TORQUES):
-    plot_from_logger(lgr, dt, [['tsid_tau_'+str(i) for i in range(4)]], [['right hip', 'right knee', 'left hip', 'left knee']], ylabel='Joint Generalized Force [N]/[Nm]')
+    labels = [['right hip des', 'right knee des', 'left hip des', 'left knee des']+['right hip', 'right knee', 'left hip', 'left knee']]
+    plot_from_logger(lgr, dt, [['tsid_tau_'+str(i) for i in range(4)] + ['simu_tauq_'+str(i) for i in range(3,7)]], 
+                                labels, linestyles=[4*['-']+4*['--']], ylabel='Joint Generalized Force [N]/[Nm]')
     plut.saveFigure('joint_torques')
 
 if(PLOT_JOINT_ANGLES):

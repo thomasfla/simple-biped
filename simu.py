@@ -6,6 +6,7 @@ from hrp2_reduced import Hrp2Reduced
 import time 
 from utils.utils_thomas import restert_viewer_server
 from utils.tsid_utils import createContactForceInequalities
+from pinocchio_inv_dyn.first_order_low_pass_filter import FirstOrderLowPassFilter
 import numpy as np
 from numpy import matlib
 from numpy.linalg import norm
@@ -56,6 +57,8 @@ class Simu:
         self.left_foot_contact = True
         self.right_foot_contact = True
         self.tauc = np.array([0.0,0.0,0.0,0.0]) # coulomb stiction 
+        self.joint_torques_cut_frequency = 30.0
+        self.tauq = zero(robot.model.nv)
         self.frf = zero(6)
         self.flf = zero(6)
         self.dt  = dt       # Time step
@@ -126,19 +129,24 @@ class Simu:
 
     def step(self,q,v,tauq,dt = None):
         if dt is None: dt = self.dt
-        tauq = tauq.copy()
+        self.tauq = tauq.copy()
         robot = self.robot
         NQ,NV,NB,RF,LF,RK,LK = self.NQ,self.NV,self.NB,self.RF,self.LF,self.RK,self.LK
         
         if self.first_iter: 
             self.compute_f_df_from_q_v(q,v)
+            self.lpf = FirstOrderLowPassFilter(dt, self.joint_torques_cut_frequency, tauq.A1)
             self.first_iter = False
-            
+
+        # filter desired joint torques        
+        self.tauq = np.matrix(self.lpf.filter_data(self.tauq.A1)).T
+        
+        # add Coulomb friction to joint torques
         for i in range(3,7):
             if v[i]<0:
-                tauq[i]+=self.tauc[i-4]
+                self.tauq[i]+=self.tauc[i-4]
             elif v[i]>0:
-                tauq[i]-=self.tauc[i-4]
+                self.tauq[i]-=self.tauc[i-4]
                 
         #~ dv  = se3.aba(robot.model,robot.data,q,v,tauq,ForceDict(self.forces,NB))
         #~ #simulazione mano! (Forces are directly in the world frame, and aba wants them in the end effector frame)
@@ -150,7 +158,7 @@ class Simu:
         h  = robot.data.nle      #(7,1)
         Jl,Jr = robot.get_Jl_Jr_world(q)
         Jc = np.vstack([Jl[1:3],Jr[1:3]])    # (4, 7)
-        dv = np.linalg.inv(M)*(tauq-h+Jc.T*self.f) #use last forces
+        dv = np.linalg.inv(M)*(self.tauq-h+Jc.T*self.f) #use last forces
         v_mean = v + 0.5*dt*dv
         v += dv*dt
         q   = se3.integrate(robot.model,q,v_mean*dt)
