@@ -20,12 +20,12 @@ def get_gains_file_name(BASE_NAME, w_d4x):
     return BASE_NAME+'_w_d4x='+str(w_d4x)+'.npy'
     
 DATA_DIR                = str(os.path.dirname(os.path.abspath(__file__)))+'/../data/'
-TESTS_DIR_NAME          = 'push_recovery_ekf_sigma_ddf_1e4/'
+TESTS_DIR_NAME          = 'push_recovery_ekf_slip/'
 GAINS_DIR_NAME          = 'gains/'
 DATA_FILE_NAME          = 'logger_data.npz'
 OUTPUT_DATA_FILE_NAME   = 'summary_data'
 SAVE_DATA               = 1
-LOAD_DATA               = 1
+LOAD_DATA               = 0
 SAVE_FIGURES            = 1
 
 TIME_BETWEEN_TESTS  = 10.0

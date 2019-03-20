@@ -193,8 +193,11 @@ def analyze_results(conf, compute_system_matrices, P):
                 
                 # compute violations of friction cone constraints
                 fric_cone_viol = np.zeros(N)
+                fz_min = 1.0
                 for t in range(f.shape[1]):
-                    fz = np.maximum([f[1,t], f[1,t], f[3,t], f[3,t]], 1e-3*np.ones(4))
+                    fz = np.array([f[1,t], f[1,t], f[3,t], f[3,t]])
+                    if(f[1,t]==0.0): fz[0] = fz[1] = fz_min
+                    if(f[3,t]==0.0): fz[2] = fz[3] = fz_min
                     tmp = np.max(np.divide(B_f * f[:,t] - b_f, fz))
                     if(tmp>0.0): fric_cone_viol[t] = tmp
                 compute_stats_and_add_to_data(data, 'fric_cone_viol', fric_cone_viol)
@@ -342,7 +345,8 @@ if __name__=='__main__':
         plt.xscale('log')
         plt.yscale('log')
         plut.saveFigure('roc_friction_violation_comparison')
-        
-    plt.show()
+     
+    if(SHOW_FIGURES):
+        plt.show()
 
     

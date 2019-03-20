@@ -51,6 +51,8 @@ class Simu:
         self.friction_cones_enabled = False
         self.friction_cones_max_violation = 0.0
         self.friction_cones_violated = False
+        self.slippage_allowed             = 1
+        self.mu      = 1.0
         self.left_foot_contact = True
         self.right_foot_contact = True
         self.tauc = np.array([0.0,0.0,0.0,0.0]) # coulomb stiction 
@@ -112,6 +114,7 @@ class Simu:
         
     def enable_friction_cones(self, mu):
         self.friction_cones_enabled = True
+        self.mu = mu
         (B, b) = createContactForceInequalities(mu) # B_f * f <= b_f
         k = B.shape[0]
         self.B_f = matlib.zeros((2*k,4));
@@ -186,13 +189,13 @@ class Simu:
                 self.right_foot_contact = False
                 print "\nt %.3f SIMU INFO: Right foot contact broken!"%(self.t)
         else:
-            self.frf[[1,2,3]] = self.Krf*qrf + self.Brf*vrf                      # Right force in effector frame            
+            self.frf[[1,2,3]] = self.Krf*qrf + self.Brf*vrf                      # Right force in effector frame 
+            if(self.frf[2]<0.0): self.frf[2]=0.0    # even if foot is inside ground normal force could be negative because of damping
             self.vrf = vrf
             if(not self.right_foot_contact):
                 self.right_foot_contact = True
+                self.Mrf0.translation[1] = self.robot.data.oMf[self.RF].translation[1] # reset tangential 0-load position
                 print "\nt %.3f SIMU INFO: Right foot contact made!"%(self.t)
-        #~ rf0_frf = se3.Force(frf)                                        # Force in rf0 frame
-        #~ rk_frf  = (robot.data.oMi[RK].inverse()*self.Mrf0).act(rf0_frf) # Spring force in R-knee frame.
             
         if(qlf[1]>0.0):
             self.flf = zero(6)
@@ -202,21 +205,24 @@ class Simu:
                 print "\nt %.3f SIMU INFO: Left foot contact broken!"%(self.t)
         else:
             self.flf[[1,2,3]] = self.Klf*qlf + self.Blf*vlf                      # Left force in effector frame
+            if(self.flf[2]<0.0): self.flf[2]=0.0    # even if foot is inside ground normal force could be negative because of damping
             self.vlf = vlf
             if(not self.left_foot_contact):
                 self.left_foot_contact = True
+                self.Mlf0.translation[1] = self.robot.data.oMf[self.LF].translation[1] # reset tangential 0-load position
                 print "\nt %.3f SIMU INFO: Left foot contact made!"%(self.t)
-        #~ lf0_flf = se3.Force(flf)                                        # Force in lf0 frame
-        #~ lk_flf  = (robot.data.oMi[LK].inverse()*self.Mlf0).act(lf0_flf) # Spring force in L-knee frame.
 
-        #~ self.forces = {RK: rk_frf, LK: lk_flf}
-        #~ 
-        #~ lkMlf = robot.data.oMi[LK].inverse()*robot.data.oMf[LF]
-        #~ rkMrf = robot.data.oMi[RK].inverse()*robot.data.oMf[RF]
-        #~ f=np.vstack([lkMlf.actInv(self.forces[LK]).linear[1:],
-                     #~ rkMrf.actInv(self.forces[RK]).linear[1:]])
         self.f=np.vstack([self.flf[1:3],self.frf[1:3]]) #  forces in the world frame
         self.df=np.vstack([(self.Klf*self.vlf)[0:2],(self.Krf*self.vrf)[0:2]])
+        
+        if(self.slippage_allowed):
+            for i in range(2):
+                if self.f[2*i,0] > self.mu * self.f[2*i+1,0]:
+#                    print "t %.3f SIMU INFO: Contact %d slipping: %.3f>%.3f"%(self.t, i, self.f[2*i,0], self.mu*self.f[2*i+1,0])
+                    self.f[2*i,0] = self.mu * self.f[2*i+1,0]                    
+                elif self.f[2*i,0] < -self.mu * self.f[2*i+1,0]:
+#                    print "t %.3f SIMU INFO: Contact %d slipping: %.3f<%.3f"%(self.t, i, self.f[2*i,0], -self.mu*self.f[2*i+1,0])
+                    self.f[2*i,0] = -self.mu * self.f[2*i+1,0]
         
         if(self.friction_cones_enabled):
             margins = self.B_f * self.f - self.b_f
