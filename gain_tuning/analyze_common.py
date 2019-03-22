@@ -42,11 +42,11 @@ def compute_cost_function_matrix(n, w_x, w_dx, w_d2x, w_d3x, w_d4x):
     Q_diag  = np.matrix(n*[w_x] + n*[w_dx] + n*[w_d2x] + n*[w_d3x] + n*[w_d4x])
     return matlib.diagflat(Q_diag) 
     
-def compute_expected_costs(x, u, dt, P, Q_x, Q_u, Q_xi):
+def compute_costs(x, u, dt, P, Q_x, Q_u):
     N = x.shape[1]
     T = N*dt
     xu_proj = matlib.empty((P.shape[0], N))  # com state
-    state_cost, control_cost, state_cost_component = 0.0, 0.0, np.zeros(4)
+    state_cost, control_cost = 0.0, 0.0
     for t in range(N):
         if(t<N-1):
             xup = P * np.vstack([x[:,t], u[:,t]])
@@ -55,9 +55,7 @@ def compute_expected_costs(x, u, dt, P, Q_x, Q_u, Q_xi):
         xu_proj[:,t] = xup
         state_cost   += dt*(xup.T * Q_x * xup)[0,0]
         control_cost += dt*(xup.T * Q_u * xup)[0,0]
-        for i in range(4): 
-            state_cost_component[i] += dt*(xup.T * Q_xi[i] * xup)
-    return xu_proj, np.sqrt(state_cost/T), np.sqrt(control_cost/T), np.sqrt(state_cost_component/T)
+    return xu_proj, np.sqrt(state_cost/T), np.sqrt(control_cost/T)
     
 
 def plot_real_vs_expected_com_state(time, com_real, com_expected, nc, w_d4x, ctrl, name=''):
@@ -65,7 +63,7 @@ def plot_real_vs_expected_com_state(time, com_real, com_expected, nc, w_d4x, ctr
     i = 0
     ax[i].plot(time, com_expected[0,:].A1, label='expected')
     ax[i].plot(time, com_real[0,:].A1, '--', label='real')
-    ax[i].set_title(r'CoM Pos Y, $w_u$='+str(w_d4x))
+    ax[i].set_title(r'CoM Pos Y, log($w_{u}$)=%.2f'%(np.log10(w_d4x)))
     ax[i].legend()
     i += 1
     ax[i].plot(time, com_expected[nc,:].A1, label='expected')
@@ -83,7 +81,7 @@ def plot_real_vs_expected_com_state(time, com_real, com_expected, nc, w_d4x, ctr
     ax[i].plot(time, com_expected[4*nc,:].A1, label='expected')
     ax[i].plot(time, com_real[4*nc,:].A1, '--', label='real')
     ax[i].set_title('Com Snap Y')
-    plut.saveFigure('exp_vs_real_com_Y_'+ctrl+'_w_u_'+str(w_d4x)+name)
+    plut.saveFigure('exp_vs_real_com_Y_'+ctrl+'_w_u_%.2f'%(np.log10(w_d4x))+name)
     
 
 def analyze_results(conf, compute_system_matrices, P):
@@ -134,19 +132,15 @@ def analyze_results(conf, compute_system_matrices, P):
         k = B.shape[0]
         B_f = matlib.zeros((2*k,4));
         b_f = matlib.zeros(2*k).T;
-        B_f[:k,:2] = B
-        B_f[k:,2:] = B
-        b_f[:k,0] = b
-        b_f[k:,0] = b
+        B_f[:k,:2] = B_f[k:,2:] = B
+        b_f[:k,0] = b_f[k:,0] = b
                 
         # compute cost function matrices
-        Q_x = compute_cost_function_matrix(nc, conf.w_x, conf.w_dx, conf.w_d2x, conf.w_d3x, 0.0)
-        Q_xi = 4*[None]
-        Q_xi[0] = compute_cost_function_matrix(nc, conf.w_x, 0.0, 0.0, 0.0, 0.0)
-        Q_xi[1] = compute_cost_function_matrix(nc, 0.0, conf.w_dx, 0.0, 0.0, 0.0)
-        Q_xi[2] = compute_cost_function_matrix(nc, 0.0, 0.0, conf.w_d2x, 0.0, 0.0)
-        Q_xi[3] = compute_cost_function_matrix(nc, 0.0, 0.0, 0.0, conf.w_d3x, 0.0)
-        Q_u  = compute_cost_function_matrix(nc, 0.0, 0.0, 0.0, 0.0, 1.0)
+        Q_x, Q_u = 2*[None], 2*[None]
+        Q_x[0] = compute_cost_function_matrix(nc, conf.w_x, conf.w_dx, conf.w_d2x, conf.w_d3x, 0.0)
+        Q_u[0] = compute_cost_function_matrix(nc, 0.0, 0.0, 0.0, 0.0, 1.0)
+        Q_x[1] = compute_cost_function_matrix(nc, conf.w_x, conf.w_dx, conf.w_d2x, conf.w_d3x, 0.0)
+        Q_u[1] = compute_cost_function_matrix(nc, 0.0, 0.0, 0.0, 1.0, 0.0)
 
         P_pinv = np.linalg.pinv(P)
         
@@ -188,8 +182,10 @@ def analyze_results(conf, compute_system_matrices, P):
                 x = matlib.empty((4*nc, N))
                 for t in range(N):
                     x[:,t] = np.vstack([com_err[:,t], com_v[:,t], com_a[:,t], com_j[:,t]])
-                com_real, data.cost_state, data.cost_control, data.cost_state_component = \
-                    compute_expected_costs(x, com_s, dt, matlib.eye(5*nc), Q_x, Q_u, Q_xi)
+                    
+                com_real, data.cost_state, data.cost_control      = compute_costs(x, com_s, dt, matlib.eye(5*nc), Q_x[0], Q_u[0])
+                com_real, data.cost_state, data.cost_control_jerk = compute_costs(x, com_s, dt, matlib.eye(5*nc), Q_x[1], Q_u[1])
+                data.jerk_max = np.max(np.abs(com_j))
                 
                 # compute violations of friction cone constraints
                 fric_cone_viol = np.zeros(N)
@@ -208,7 +204,8 @@ def analyze_results(conf, compute_system_matrices, P):
             else:
                 data.cost_state   = np.nan
                 data.cost_control = np.nan
-                data.cost_state_component = 4*[np.nan]    
+                data.cost_control_jerk = np.nan
+                data.jerk_max = np.nan
                 data.fric_cone_viol_max_err = np.nan
                 time = np.arange(N*dt, step=dt)
                 xu0 = conf.x0
@@ -222,23 +219,29 @@ def analyze_results(conf, compute_system_matrices, P):
             x0 = xu0[:A.shape[0],0]
             
             (x,u) = simulate_LDS(A, B, K, x0, dt, N)
-            xu_proj, data.expected_state_cost, data.expected_control_cost, data.expected_state_cost_component = \
-                compute_expected_costs(x, u, dt, P, Q_x, Q_u, Q_xi)
+            xu_proj, data.expected_state_cost, data.expected_control_cost      = compute_costs(x, u, dt, P, Q_x[0], Q_u[0])
+            xu_proj, data.expected_state_cost, data.expected_control_cost_jerk = compute_costs(x, u, dt, P, Q_x[1], Q_u[1])
+            data.expected_jerk_max = np.max(np.abs(xu_proj[:,3*nc:4*nc]))
             
 #            (x2,u2) = simulate_LDS(A, B, K, conf.x0, dt, N)
 #            xu2_proj, data.expected_state_cost2, data.expected_control_cost2, data.expected_state_cost_component2 = \
-#                compute_expected_costs(x2, u2, dt, P, Q_x, Q_u, Q_xi)
+#                compute_costs(x2, u2, dt, P, Q_x, Q_u, Q_xi)
             
             print 'Real state cost:        %f'%(data.cost_state)
             print 'Expected state cost:    %f'%(data.expected_state_cost)
             print 'Real ctrl cost:         %f'%(data.cost_control)
             print 'Expected ctrl cost:     %f'%(data.expected_control_cost)
-            print 'Friction cone violation %f'%(data.fric_cone_viol_max_err)
+            print 'Real max jerk:          %f'%(data.jerk_max)
+#            print 'Friction cone violation %f'%(data.fric_cone_viol_max_err)
             print ''
                 
             if(plut.SAVE_FIGURES or conf.do_plots):
                 # plot real CoM trajectory VS expected CoM trajectory
                 plot_real_vs_expected_com_state(time, com_real, xu_proj, nc, w_d4x, ctrl)
+#                plt.figure()
+#                plt.plot(time, com_j[0,:].A1)
+#                print 'max jerk:', np.max(np.abs(com_j[0,:])), np.max(np.abs(com_j))
+#                plt.show()
 #                plot_real_vs_expected_com_state(time, com_real, xu2_proj, nc, w_d4x, ctrl, 'fixed_x0')
                 
         if(conf.SAVE_DATA):
@@ -256,30 +259,59 @@ def analyze_results(conf, compute_system_matrices, P):
     
     for (w_d4x, color) in zip(keys_sorted, colors):
         tmp = res.get_matching(keys, [None, None, None, w_d4x]).next()
-        plt.plot(tmp.expected_state_cost, tmp.expected_control_cost, ' *', color=color, markersize=30, label=r'Expected, $w_{u}$='+str(w_d4x))
+        label = r'Expected, log($w_{u}$)=%.2f'%(np.log10(w_d4x))
+        plt.plot(tmp.expected_state_cost, tmp.expected_control_cost, ' *', color=color, markersize=30, label=label)
         plt.plot(tmp.cost_state, tmp.cost_control, ' o', color=color, markersize=30) #, label='real w_d4x='+str(w_d4x))
     plt.legend()
     plt.grid(True);
     plt.xlabel(r'State cost')
-    plt.ylabel(r'Control cost')
+    plt.ylabel(r'Control (snap) cost')
     plt.xscale('log')
     plt.yscale('log')
     plut.saveFigure('roc_performance')
-    
-    
-    plt.figure()
+
+    plt.figure()    
     for (w_d4x, color) in zip(keys_sorted, colors):
         tmp = res.get_matching(keys, [None, None, None, w_d4x]).next()
-        if(tmp.fric_cone_viol_max_err==0.0):
-            tmp.fric_cone_viol_max_err = 1e-5
-        plt.plot(tmp.cost_state, tmp.fric_cone_viol_max_err, ' o', color=color, markersize=30, label=r'$w_u$='+str(w_d4x))
+        label = r'Expected, log($w_{u}$)=%.2f'%(np.log10(w_d4x))
+        plt.plot(tmp.expected_state_cost, tmp.expected_control_cost_jerk, ' *', color=color, markersize=30, label=label)
+        plt.plot(tmp.cost_state, tmp.cost_control_jerk, ' o', color=color, markersize=30) #, label='real w_d4x='+str(w_d4x))
     plt.legend()
     plt.grid(True);
     plt.xlabel(r'State cost')
-    plt.ylabel(r'Friction violation')
+    plt.ylabel(r'Control (jerk) cost')
     plt.xscale('log')
     plt.yscale('log')
-    plut.saveFigure('roc_friction_violation')
+    plut.saveFigure('roc_performance_jerk')
+    
+    plt.figure()    
+    for (w_d4x, color) in zip(keys_sorted, colors):
+        tmp = res.get_matching(keys, [None, None, None, w_d4x]).next()
+        label = r'Expected, log($w_{u}$)=%.2f'%(np.log10(w_d4x))
+        plt.plot(tmp.expected_state_cost, tmp.expected_control_cost_jerk, ' *', color=color, markersize=30, label=label)
+        plt.plot(tmp.cost_state, tmp.jerk_max, ' o', color=color, markersize=30) #, label='real w_d4x='+str(w_d4x))
+    plt.legend()
+    plt.grid(True);
+    plt.xlabel(r'State cost')
+    plt.ylabel(r'Control (jerk max) cost')
+    plt.xscale('log')
+    plt.yscale('log')
+    plut.saveFigure('roc_performance_jerk_max')
+    
+#    plt.figure()
+#    for (w_d4x, color) in zip(keys_sorted, colors):
+#        tmp = res.get_matching(keys, [None, None, None, w_d4x]).next()
+#        if(tmp.fric_cone_viol_max_err==0.0):
+#            tmp.fric_cone_viol_max_err = 1e-5
+#        label = r'log($w_{u}$)=%.2f'%(np.log10(w_d4x))
+#        plt.plot(tmp.cost_state, tmp.fric_cone_viol_max_err, ' o', color=color, markersize=30, label=label)
+#    plt.legend()
+#    plt.grid(True);
+#    plt.xlabel(r'State cost')
+#    plt.ylabel(r'Friction violation')
+#    plt.xscale('log')
+#    plt.yscale('log')
+#    plut.saveFigure('roc_friction_violation')
     
     if(SHOW_FIGURES):
         plt.show()
@@ -288,8 +320,8 @@ def analyze_results(conf, compute_system_matrices, P):
 def compare_controllers(conf_list, marker_list):   
     MAX_STATE_COST   = 1.0
     MAX_CONTROL_COST = 1e6
+    MAX_JERK_COST    = 1e3
     keys                = conf_list[0].keys 
-    w_u_list            = conf_list[0].w_d4x_list
     plut.FIGURE_PATH    = conf_list[0].DATA_DIR + conf_list[0].TESTS_DIR_NAME
     plut.SAVE_FIGURES   = conf_list[0].SAVE_FIGURES
     SHOW_FIGURES        = conf_list[0].do_plots
@@ -308,6 +340,7 @@ def compare_controllers(conf_list, marker_list):
     prop_cycle = plt.rcParams['axes.prop_cycle']
     colors = prop_cycle.by_key()['color']
     for (conf, res, mark) in zip(conf_list, res_list, marker_list):
+        w_u_list   = conf.w_d4x_list
         label_done = False
         for (i, (w_u, color)) in enumerate(zip(w_u_list, colors)):
             tmp = res.get_matching(keys, [None, None, None, w_u]).next()
@@ -325,31 +358,67 @@ def compare_controllers(conf_list, marker_list):
         plt.legend()
         plt.grid(True);
         plt.xlabel(r'State cost')
-        plt.ylabel(r'Control cost')
+        plt.ylabel(r'Control (snap) cost')
         plt.xscale('log')
         plt.yscale('log')
         plt.xlim(8e-4, MAX_STATE_COST)
         plt.ylim(9.0,  1.3*MAX_CONTROL_COST)
         plut.saveFigure('roc_performance_comparison')
         
-#    plt.figure()
-#    for (conf, res, mark) in zip(conf_list, res_list, marker_list):
-#        for (i, (w_u, color)) in enumerate(zip(w_u_list, colors)):
-#            tmp = res.get_matching(keys, [None, None, None, w_u]).next()
-#            if i==0:    lbl = conf.ctrl_long_name
-#            else:       lbl = ''
-#            if(tmp.fric_cone_viol_max_err<1e-3):
-#                tmp.fric_cone_viol_max_err = 1e-3
-#            elif tmp.fric_cone_viol_max_err>1e6: 
-#                tmp.fric_cone_viol_max_err = 1e6
-#            plt.plot(tmp.cost_state, tmp.fric_cone_viol_max_err, ' '+mark, color=color, markersize=30, label=lbl)
-#        plt.legend()
-#        plt.grid(True);
-#        plt.xlabel(r'State cost')
-#        plt.ylabel(r'Friction violation')
-#        plt.xscale('log')
-#        plt.yscale('log')
-#        plut.saveFigure('roc_friction_violation_comparison')
+    plt.figure()
+    for (conf, res, mark) in zip(conf_list, res_list, marker_list):
+        w_u_list   = conf.w_d4x_list
+        label_done = False
+        for (i, (w_u, color)) in enumerate(zip(w_u_list, colors)):
+            tmp = res.get_matching(keys, [None, None, None, w_u]).next()
+            if tmp.cost_state>MAX_STATE_COST:       
+                tmp.cost_state = np.nan
+            if tmp.cost_control_jerk>MAX_JERK_COST:   
+                tmp.cost_control_jerk = MAX_JERK_COST
+                
+            if not label_done:
+                lbl = conf.ctrl_long_name
+                label_done = True
+            else:       
+                lbl = ''            
+            plt.plot(tmp.cost_state, tmp.cost_control_jerk, ' '+mark, color=color, markersize=30, alpha = 0.75, label=lbl)
+        plt.legend()
+        plt.grid(True);
+        plt.xlabel(r'State cost')
+        plt.ylabel(r'Control (jerk) cost')
+        plt.xscale('log')
+        plt.yscale('log')
+        plt.xlim(8e-4, MAX_STATE_COST)
+        plt.ylim(1.0,  1.1*MAX_JERK_COST)
+        plut.saveFigure('roc_performance_comparison_jerk')
+        
+    plt.figure()
+    for (conf, res, mark) in zip(conf_list, res_list, marker_list):
+        w_u_list   = conf.w_d4x_list
+        label_done = False
+        for (i, (w_u, color)) in enumerate(zip(w_u_list, colors)):
+            tmp = res.get_matching(keys, [None, None, None, w_u]).next()
+            if tmp.cost_state>MAX_STATE_COST:       
+                tmp.cost_state = np.nan
+            if tmp.jerk_max>MAX_JERK_COST:   
+                tmp.jerk_max = MAX_JERK_COST
+                
+            if not label_done:
+                lbl = conf.ctrl_long_name
+                label_done = True
+            else:       
+                lbl = ''            
+            plt.plot(tmp.cost_state, tmp.jerk_max, ' '+mark, color=color, markersize=30, alpha = 0.75, label=lbl)
+        plt.legend()
+        plt.grid(True);
+        plt.xlabel(r'State cost')
+        plt.ylabel(r'Control (jerk max) cost')
+        plt.xscale('log')
+        plt.yscale('log')
+        plt.xlim(8e-4, MAX_STATE_COST)
+        plt.yli1m(1.0,  1.1*MAX_JERK_COST)
+        plut.saveFigure('roc_performance_comparison_jerk_max')
+
      
     if(SHOW_FIGURES):
         plt.show()
@@ -359,9 +428,10 @@ if __name__=='__main__':
     import simple_biped.gain_tuning.conf_adm_ctrl as conf_adm_ctrl
     import simple_biped.gain_tuning.conf_tsid_adm as conf_tsid_adm
     import simple_biped.gain_tuning.conf_tsid_flex_k as conf_tsid_flex_k
+    import simple_biped.gain_tuning.conf_tsid_rigid as conf_tsid_rigid
     
-    conf_list = [conf_adm_ctrl, conf_tsid_adm, conf_tsid_flex_k]
-    marker_list = ['+', '*', 'x']
+    conf_list = [conf_tsid_rigid, conf_adm_ctrl, conf_tsid_adm, conf_tsid_flex_k]
+    marker_list = ['s', 'o', '*', 'v']
     
 #    conf_list = [conf_tsid_adm, conf_tsid_flex_k]
 #    marker_list = ['*', 'x']
