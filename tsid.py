@@ -13,12 +13,47 @@ except ImportError:
 
 class Empty:
     pass
+
+class GainsTsid:
+    ''' Class collecting the gains of TSID-Rigid:
+        (Kp_mom, Kd_mom)
+    '''
+    
+    def __init__(self, gain_array=None):
+        '''
+            gain_array: numpy array containing all the gains
+        '''
+        if gain_array is None:
+            gain_array = np.zeros(2)
+        self.from_array(gain_array)
+    
+    def to_array(self):
+        res = np.zeros(2)
+        res[0] = self.Kp
+        res[1] = self.Kd
+        return res
+        
+    def from_array(self, gains):
+        self.Kp = gains[0]
+        self.Kd = gains[1]
+        
+    def to_string(self):
+        res = ''
+        for s in ['Kp', 'Kd']:
+            res += s+' = '+str(self.__dict__[s])+'\n'
+        return res
+        
+    @staticmethod
+    def get_default_gains():
+        gains = GainsTsid()
+        gains.Kp, gains.Kd = 30.0, 2*np.sqrt(30.0)
+        return gains
     
 class Tsid:
     
     HESSIAN_REGULARIZATION = 1e-8
     
-    def __init__(self, robot, Ky, Kz, w_post, w_force, Kp_post, Kp_com, estimator=None):
+    def __init__(self, robot, Ky, Kz, w_post, w_force, Kp_post, gains, estimator=None):
         self.robot = robot
         self.estimator = estimator
         self.NQ = robot.model.nq
@@ -36,8 +71,8 @@ class Tsid:
         self.w_force = w_force
         self.Kp_post = Kp_post
         self.Kd_post = 2*sqrt(Kp_post)
-        self.Kp_com = Kp_com
-        self.Kd_com = 2*sqrt(Kp_com)
+        self.Kp_com = gains.Kp
+        self.Kd_com = gains.Kd
         self.data = Empty()
         com_p_ref = np.matrix([0.,0.53]).T
         com_v_ref = np.matrix([0.,0.]).T

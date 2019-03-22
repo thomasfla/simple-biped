@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import utils.plot_utils as plut
 from utils.plot_utils import plot_from_logger
 
-from tsid import Tsid
+from tsid import Tsid, GainsTsid
 from tsid_admittance import TsidAdmittance, GainsTsidAdm
 from admittance_ctrl import AdmittanceControl, GainsAdmCtrl
 from tsid_flexible_contacts import TsidFlexibleContact, GainsTsidFlexK
@@ -53,7 +53,7 @@ def com_traj(t, c_init, c_final, T):
     return (np.matrix([[py ],[pz]]), np.matrix([[vy ],[vz]]),
             np.matrix([[ay ],[az]]), np.matrix([[jy ],[jz]]), np.matrix([[sy ],[sz]]))
 
-CONTROLLER = 'adm_ctrl'             # either 'tsid_rigid' or 'tsid_flex_k' or 'tsid_adm' or 'tsid_mistry' or 'adm_ctrl'
+CONTROLLER = 'tsid_rigid'             # either 'tsid_rigid' or 'tsid_flex_k' or 'tsid_adm' or 'tsid_mistry' or 'adm_ctrl'
 F_DISTURB = np.matrix([0e3, 0, 0]).T
 COM_SIN_AMP = np.array([0.0, 0.0])
 ZETA = .3   # with zeta=0.03 and ndt=100 it is unstable
@@ -233,13 +233,15 @@ Kd_com = 2*sqrt(Kp_com)         # com derivative feedback gain
 if(CONTROLLER=='tsid_flex_k'):
     w_post  = 0.3
     ddf_max = 2e4 #4e5 #Kz
-    if(gains_array is None):    gains = GainsTsidFlexK.get_default_gains(K)
+    if(gains_array is None):    gains = GainsTsidFlexK.get_default_gains()
     else:                       gains = GainsTsidFlexK(gains_array)
     tsid = TsidFlexibleContact(robot, Ky, Kz, w_post, Kp_post, gains, fMin, mu_ctrl, ddf_max, dt, centroidalEstimator)
 elif(CONTROLLER=='tsid_rigid'):
     w_post  = 1e-2                  # postural task weight
     w_force = 1e-4
-    tsid = Tsid(robot, Ky, Kz, w_post, w_force, Kp_post, Kp_com, centroidalEstimator)
+    if(gains_array is None):    gains = GainsTsid.get_default_gains()
+    else:                       gains = GainsTsid(gains_array)
+    tsid = Tsid(robot, Ky, Kz, w_post, w_force, Kp_post, gains, centroidalEstimator)
 elif(CONTROLLER=='tsid_adm'):
     if(gains_array is None):    gains = GainsTsidAdm.get_default_gains(K)
     else:                       gains = GainsTsidAdm(gains_array)
