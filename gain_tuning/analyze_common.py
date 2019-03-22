@@ -416,7 +416,7 @@ def compare_controllers(conf_list, marker_list):
         plt.xscale('log')
         plt.yscale('log')
         plt.xlim(8e-4, MAX_STATE_COST)
-        plt.yli1m(1.0,  1.1*MAX_JERK_COST)
+        plt.ylim(1.0,  1.1*MAX_JERK_COST)
         plut.saveFigure('roc_performance_comparison_jerk_max')
 
      
