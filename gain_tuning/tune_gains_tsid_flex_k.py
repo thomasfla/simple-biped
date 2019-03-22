@@ -22,6 +22,7 @@ import simple_biped.utils.plot_utils as plut
 from simple_biped.simu import Simu
 from simple_biped.utils.LDS_utils import simulate_ALDS, compute_integrator_dynamics, compute_weighted_quadratic_state_control_integral_ALDS
 import controlpy
+from pinocchio_inv_dyn.first_order_low_pass_filter import FirstOrderLowPassFilter
 
 import simple_biped.gain_tuning.conf_tsid_flex_k as conf
 
@@ -59,7 +60,7 @@ if(not LOAD_DATA):
     
     start_time = time.time()
     for w_d4x in w_d4x_list:
-        print("".center(100,'#'))
+        print("".center(60,'#'))
         print("Tuning gains for w_d4x={}".format(w_d4x))
         R[0,0] = w_d4x
         gains_4th_order_system, X, closedLoopEigVals = controlpy.synthesis.controller_lqr(A,B,Q,R)
@@ -81,7 +82,54 @@ if(not LOAD_DATA):
         for w_d4x in w_d4x_list:
             with open(DATA_DIR + conf.get_gains_file_name(conf.GAINS_FILE_NAME, w_d4x), 'wb') as f:
                 np.save(f, optimal_gains[w_d4x])
-            
+ 
+
+def simulate_LDS_with_LPF(A, B, K, x0, DT, N, ndt, fc, plot):
+    '''Simulate a Linear Dynamical System (LDS) forward in time assuming
+       the control inputs are low-pass filtered
+        A: transition matrix
+        B: control matrix
+        K: feedback gain matrix
+        x0: initial state
+        DT: time step
+        N: number of time steps to simulate
+        ndt: number of sub time steps (to make simulation more accurate)
+    '''
+    n = A.shape[0]
+    m = B.shape[1]
+    x = matlib.empty((n,N))
+    u = matlib.empty((m,N-1))
+    u_filt = matlib.empty((m,N-1))
+    x[:,0] = x0
+    u[:,0] = -K*x0
+    u_filt[:,0] = -K*x0
+    dt = DT/ndt
+    lpf = FirstOrderLowPassFilter(dt, fc, u[:,0].A1)    
+    for i in range(N-1):
+        u[:,i] = -K*x[:,i]
+        x_pre = x[:,i]
+        for ii in range(ndt):
+            u_filt[:,i] = np.matrix(lpf.filter_data(u[:,i].A1))
+            x_post = x_pre + dt * (A*x_pre + B*u_filt[:,i])
+            x_pre = x_post
+        x[:,i+1] = x_post
+        
+    if plot:
+        max_rows = 4
+        n_cols = 1 + (n+m+1)/max_rows
+        n_rows = int(np.ceil(float(n+m)/n_cols))
+        f, ax = plt.subplots(n_rows, n_cols, sharex=True);
+        ax = ax.reshape(n_cols*n_rows)
+        time = np.arange(N*DT, step=DT)
+        for i in range(n):
+            ax[i].plot(time, x[i,:].A1)
+            ax[i].set_title('x '+str(i))
+        for i in range(m):
+            ax[n+i].plot(time[:-1], u[i,:].A1, label='u')
+            ax[n+i].plot(time[:-1], u_filt[i,:].A1, '--', label='u filtered')
+            ax[n+i].set_title('u '+str(i))
+            ax[n+1].legend(loc='best')
+    return (x,u)           
 
 # SETUP
 #ny          = conf.ny
@@ -94,29 +142,33 @@ if(not LOAD_DATA):
 #T           = conf.T_cost_function
 #optimal_cost_pos = {}
 #optimal_cost_d4x = {}
-#keys_sorted = optimal_gains.keys()
-#keys_sorted.sort()
-#
-#for w_d4x in keys_sorted:
-#    K = optimal_gains[w_d4x]
-#
+keys_sorted = optimal_gains.keys()
+keys_sorted.sort()
+x0 = x0[::2]
+fc = 30
+dt = 1e-3
+ndt = 10
+N  = int(conf.T_simu/dt)
+for w_d4x in keys_sorted:
+    K = optimal_gains[w_d4x]
+
 #    R_sqrt[0,0] = np.sqrt(w_d4x)    
 #    optimal_cost               = compute_weighted_quadratic_state_control_integral_ALDS(A, B, K, x0, T, Q_sqrt, R_sqrt, dt)
 #    optimal_cost_pos[w_d4x]    = compute_weighted_quadratic_state_control_integral_ALDS(A, B, K, x0, T, Q_pos_sqrt, R_pos_sqrt, dt)
 #    optimal_cost_d4x[w_d4x]    = compute_weighted_quadratic_state_control_integral_ALDS(A, B, K, x0, T, Q_d4x_sqrt, R_d4x_sqrt, dt)
-#
-#    H = A - B*K  # closed-loop transition matrix    
-#    print("".center(100,'#'))
-#    print("w_d4x={}".format(w_d4x))
+
+    H = A - B*K  # closed-loop transition matrix    
+    print("".center(60,'#'))
+    print("w_d4x={}".format(w_d4x))
 #    print("Optimal cost     {}".format(optimal_cost))
 #    print("Optimal cost state {}".format(optimal_cost_pos[w_d4x]))
 #    print("Optimal cost ctrl  {}".format(optimal_cost_d4x[w_d4x]))
 #    print("Largest eigenvalues:", np.sort_complex(eigvals(H))[-4:].T)
-#    
-#    if(do_plots):
-#        simulate_ALDS(H, x0, dt, N, 1, 0)
-#        plt.title("log(w_d4x)=%.1f"%(np.log10(w_d4x)))
-#
+    
+    if(do_plots):
+        simulate_LDS_with_LPF(A, B, K, x0, dt, N, ndt, fc, 1)
+        plt.title("log(w_d4x)=%.1f"%(np.log10(w_d4x)))
+
 #plt.figure()
 #for w_d4x in keys_sorted:
 #    plt.plot(optimal_cost_pos[w_d4x], optimal_cost_d4x[w_d4x], ' *', markersize=30, label='w_d4x='+str(w_d4x))
@@ -126,6 +178,6 @@ if(not LOAD_DATA):
 #plt.xlabel('State tracking cost')
 #plt.ylabel('Control cost')
 #plt.grid(True);
-#
-#if(do_plots):    
-#    plt.show()
+
+if(do_plots):    
+    plt.show()
