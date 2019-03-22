@@ -50,7 +50,7 @@ class GainsTsidFlexK:
         return res
         
     @staticmethod
-    def get_default_gains(K):
+    def get_default_gains():
         gains = GainsTsidFlexK()
         #    (Kp_com, Kd_com, Ka_com, Kj_com) = (10611.05989124,  4182.20596787,   618.10999684,    40.5999999)     # poles [-10.3 -10.2 -10.1  -10.]
         #    (Kp_com, Kd_com, Ka_com, Kj_com) = (52674.83686644, 13908.30537877,  1377.10995895, 60.5999991) # poles [-15.30235117 -15.19247204 -15.10739361 -14.99778229]
