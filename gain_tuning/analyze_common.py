@@ -317,6 +317,40 @@ def analyze_results(conf, compute_system_matrices, P):
         plt.show()
 
 
+def plot_performance(name, res_list, conf_list, marker_list, xlabel, ylabel,
+                     x_perf, y_perf, 
+                     x_min, y_min,
+                     x_max, y_max, 
+                     x_max_replacement, y_max_replacement):
+    plt.figure()
+    prop_cycle = plt.rcParams['axes.prop_cycle']
+    colors = prop_cycle.by_key()['color']
+    for (conf, res, mark) in zip(conf_list, res_list, marker_list):
+        w_u_list   = conf.w_d4x_list
+        label_done = False
+        for (i, (w_u, color)) in enumerate(zip(w_u_list, colors)):
+            tmp = res.get_matching(conf.keys, [None, None, None, w_u]).next()
+            if tmp.__dict__[x_perf]>x_max:       
+                tmp.__dict__[x_perf] = x_max_replacement
+            if tmp.__dict__[y_perf]>y_max:   
+                tmp.__dict__[y_perf] = y_max_replacement
+                
+            if not label_done:
+                lbl = conf.ctrl_long_name
+                label_done = True
+            else:       
+                lbl = ''            
+            plt.plot(tmp.__dict__[x_perf], tmp.__dict__[y_perf], ' '+mark, color=color, markersize=30, alpha = 0.75, label=lbl)
+        plt.legend()
+        plt.grid(True);
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
+        plt.xscale('log')
+        plt.yscale('log')
+        plt.xlim(x_min, x_max)
+        plt.ylim(y_min, 1.3*y_max)
+        plut.saveFigure(name)
+
 def compare_controllers(conf_list, marker_list):   
     MAX_STATE_COST   = 1.0
     MAX_CONTROL_COST = 1e6
@@ -336,89 +370,26 @@ def compare_controllers(conf_list, marker_list):
         i += 1
         f.close();
         
-    plt.figure()
-    prop_cycle = plt.rcParams['axes.prop_cycle']
-    colors = prop_cycle.by_key()['color']
-    for (conf, res, mark) in zip(conf_list, res_list, marker_list):
-        w_u_list   = conf.w_d4x_list
-        label_done = False
-        for (i, (w_u, color)) in enumerate(zip(w_u_list, colors)):
-            tmp = res.get_matching(keys, [None, None, None, w_u]).next()
-            if tmp.cost_state>MAX_STATE_COST:       
-                tmp.cost_state = np.nan
-            if tmp.cost_control>MAX_CONTROL_COST:   
-                tmp.cost_control = MAX_CONTROL_COST
-                
-            if not label_done:
-                lbl = conf.ctrl_long_name
-                label_done = True
-            else:       
-                lbl = ''            
-            plt.plot(tmp.cost_state, tmp.cost_control, ' '+mark, color=color, markersize=30, alpha = 0.75, label=lbl)
-        plt.legend()
-        plt.grid(True);
-        plt.xlabel(r'State cost')
-        plt.ylabel(r'Control (snap) cost')
-        plt.xscale('log')
-        plt.yscale('log')
-        plt.xlim(8e-4, MAX_STATE_COST)
-        plt.ylim(9.0,  1.3*MAX_CONTROL_COST)
-        plut.saveFigure('roc_performance_comparison')
-        
-    plt.figure()
-    for (conf, res, mark) in zip(conf_list, res_list, marker_list):
-        w_u_list   = conf.w_d4x_list
-        label_done = False
-        for (i, (w_u, color)) in enumerate(zip(w_u_list, colors)):
-            tmp = res.get_matching(keys, [None, None, None, w_u]).next()
-            if tmp.cost_state>MAX_STATE_COST:       
-                tmp.cost_state = np.nan
-            if tmp.cost_control_jerk>MAX_JERK_COST:   
-                tmp.cost_control_jerk = MAX_JERK_COST
-                
-            if not label_done:
-                lbl = conf.ctrl_long_name
-                label_done = True
-            else:       
-                lbl = ''            
-            plt.plot(tmp.cost_state, tmp.cost_control_jerk, ' '+mark, color=color, markersize=30, alpha = 0.75, label=lbl)
-        plt.legend()
-        plt.grid(True);
-        plt.xlabel(r'State cost')
-        plt.ylabel(r'Control (jerk) cost')
-        plt.xscale('log')
-        plt.yscale('log')
-        plt.xlim(8e-4, MAX_STATE_COST)
-        plt.ylim(1.0,  1.1*MAX_JERK_COST)
-        plut.saveFigure('roc_performance_comparison_jerk')
-        
-    plt.figure()
-    for (conf, res, mark) in zip(conf_list, res_list, marker_list):
-        w_u_list   = conf.w_d4x_list
-        label_done = False
-        for (i, (w_u, color)) in enumerate(zip(w_u_list, colors)):
-            tmp = res.get_matching(keys, [None, None, None, w_u]).next()
-            if tmp.cost_state>MAX_STATE_COST:       
-                tmp.cost_state = np.nan
-            if tmp.jerk_max>MAX_JERK_COST:   
-                tmp.jerk_max = MAX_JERK_COST
-                
-            if not label_done:
-                lbl = conf.ctrl_long_name
-                label_done = True
-            else:       
-                lbl = ''            
-            plt.plot(tmp.cost_state, tmp.jerk_max, ' '+mark, color=color, markersize=30, alpha = 0.75, label=lbl)
-        plt.legend()
-        plt.grid(True);
-        plt.xlabel(r'State cost')
-        plt.ylabel(r'Control (jerk max) cost')
-        plt.xscale('log')
-        plt.yscale('log')
-        plt.xlim(8e-4, MAX_STATE_COST)
-        plt.ylim(1.0,  1.1*MAX_JERK_COST)
-        plut.saveFigure('roc_performance_comparison_jerk_max')
-
+    plot_performance('roc_performance_comparison', res_list, conf_list, marker_list, 
+                     'State cost', 'Snap cost',
+                     'cost_state', 'cost_control', 
+                     8e-4, 9.0,
+                     MAX_STATE_COST, MAX_CONTROL_COST, 
+                     np.nan, MAX_CONTROL_COST)
+ 
+    plot_performance('roc_performance_comparison_jerk', res_list, conf_list, marker_list, 
+                     'State cost', 'Jerk cost',
+                     'cost_state', 'cost_control_jerk', 
+                     8e-4, 1.0,
+                     MAX_STATE_COST, MAX_JERK_COST, 
+                     np.nan, MAX_JERK_COST)
+   
+    plot_performance('roc_performance_comparison_jerk_max', res_list, conf_list, marker_list, 
+                     'State cost', 'Max Jerk',
+                     'cost_state', 'jerk_max', 
+                     8e-4, 1.0,
+                     MAX_STATE_COST, MAX_JERK_COST, 
+                     np.nan, MAX_JERK_COST)
      
     if(SHOW_FIGURES):
         plt.show()
