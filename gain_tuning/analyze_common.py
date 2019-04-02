@@ -322,34 +322,109 @@ def plot_performance(name, res_list, conf_list, marker_list, xlabel, ylabel,
                      x_min, y_min,
                      x_max, y_max, 
                      x_max_replacement, y_max_replacement):
-    plt.figure()
+    
     prop_cycle = plt.rcParams['axes.prop_cycle']
     colors = prop_cycle.by_key()['color']
+    points = []
     for (conf, res, mark) in zip(conf_list, res_list, marker_list):
         w_u_list   = conf.w_d4x_list
         label_done = False
         for (i, (w_u, color)) in enumerate(zip(w_u_list, colors)):
             tmp = res.get_matching(conf.keys, [None, None, None, w_u]).next()
-            if tmp.__dict__[x_perf]>x_max:       
-                tmp.__dict__[x_perf] = x_max_replacement
-            if tmp.__dict__[y_perf]>y_max:   
-                tmp.__dict__[y_perf] = y_max_replacement
+            p = Empty()
+            p.x = tmp.__dict__[x_perf]
+            p.y = tmp.__dict__[y_perf]
+            p.w_u = w_u
+            p.conf = conf
+            p.mark = mark
+            p.color = color
+            p.lbl = ''
+            
+            if np.isfinite(p.x) and np.isfinite(p.y):
+                points += [p]
+            else:
+                continue
+            
+            if p.x>x_max:  p.x = x_max_replacement
+            if p.y>y_max:  p.y = y_max_replacement
                 
             if not label_done:
-                lbl = conf.ctrl_long_name
+                p.lbl = conf.ctrl_long_name
                 label_done = True
-            else:       
-                lbl = ''            
-            plt.plot(tmp.__dict__[x_perf], tmp.__dict__[y_perf], ' '+mark, color=color, markersize=30, alpha = 0.75, label=lbl)
-        plt.legend()
-        plt.grid(True);
-        plt.xlabel(xlabel)
-        plt.ylabel(ylabel)
-        plt.xscale('log')
-        plt.yscale('log')
-        plt.xlim(x_min, x_max)
-        plt.ylim(y_min, 1.3*y_max)
-        plut.saveFigure(name)
+        
+    # find Pareto-optimal points
+    optimal_points = []
+    suboptimal_points = []
+    for p0 in points:
+        if np.isnan(p0.x): continue
+        p0_optimal = True
+        for p1 in points:
+            if p1.x<p0.x and p1.y<p0.y:
+                p0_optimal = False
+                suboptimal_points += [p0]
+                break
+        if p0_optimal: optimal_points += [p0]
+    
+    # plot with colors corresponding to values of w_u
+    plt.figure()
+    for p in points:
+        plt.plot(p.x, p.y, ' '+p.mark, color=p.color, markersize=30, alpha = 0.75, label=p.lbl)
+    plt.legend();           plt.grid(True);
+    plt.xlabel(xlabel);     plt.ylabel(ylabel)
+    plt.xscale('log');      plt.yscale('log')
+    plt.xlim(x_min, x_max); plt.ylim(y_min, 1.3*y_max)
+    plut.saveFigure(name)
+    
+    # plot with colors corresponding to Pareto optimality
+    index = 0
+    for p in optimal_points:
+        # LOAD DATA FOR PLOT
+        test_name = p.conf.get_test_name(p.conf.controllers[0], p.conf.zetas[0], 
+                                         p.conf.f_dists[0], p.w_u)
+        DATA_DIR = p.conf.DATA_DIR + p.conf.TESTS_DIR_NAME + p.conf.controllers[0] +'/'
+        INPUT_FILE = DATA_DIR + test_name + '/' + p.conf.DATA_FILE_NAME
+        # SETUP LOGGER
+        nc, nf, dt, N0 = conf.nc, conf.nf, conf.dt_simu, 0
+        lgr = RaiLogger()
+        lgr.load(INPUT_FILE)
+        com_p = lgr.get_vector('simu_com_p', nc)[:,N0:]
+        com_ref = lgr.get_vector('tsid_comref', nc)[:,N0:]
+        com_err = com_p-com_ref
+#        com_v = lgr.get_vector('simu_com_v', nc)[:,N0:]
+#        com_a = lgr.get_vector('simu_com_a', nc)[:,N0:]
+        com_j = lgr.get_vector('simu_com_j', nc)[:,N0:]
+#        lkf = lgr.get_vector('simu_lkf', nf/nc)[:,N0:]
+#        rkf = lgr.get_vector('simu_rkf', nf/nc)[:,N0:]
+#        f   = np.vstack((lkf,rkf))
+        # compute state cost and control cost for real system
+        N = com_p.shape[1]
+        time = np.arange(N*dt, step=dt)
+        
+        fi, ax = plt.subplots(2, 1, sharex=True);
+        i = 0
+        ax[i].plot(time, com_err[0,:].A1, '-', label='real')
+        ax[i].set_title(p.conf.ctrl_long_name+', State cost: %.1f'%(np.log10(p.x)))
+        ax[i].set_ylabel(r'CoM pos Y [$m$]')
+        i += 1
+        ax[i].plot(time, com_j[0,:].A1, '-', label='real')
+        ax[i].set_ylabel(r'CoM jerk Y [$m/s^3$]')
+        plut.saveFigure(name+'_pareto_%.2f_%s'%(np.log10(p.x), p.conf.controllers[0]))
+        index += 1
+        
+        
+        
+    plt.figure()
+    for p in optimal_points:
+        plt.plot(p.x, p.y, ' '+p.mark, color='r', markersize=30, alpha = 0.75, label=p.lbl)
+    for p in suboptimal_points:
+        plt.plot(p.x, p.y, ' '+p.mark, color='b', markersize=30, alpha = 0.75, label=p.lbl)
+    plt.legend();           plt.grid(True);
+    plt.xlabel(xlabel);     plt.ylabel(ylabel)
+    plt.xscale('log');      plt.yscale('log')
+    plt.xlim(x_min, x_max); plt.ylim(y_min, 1.3*y_max)
+    plut.saveFigure(name+'_pareto')
+    
+    plt.close('all')
 
 def compare_controllers(conf_list, marker_list):   
     MAX_STATE_COST   = 1.0
