@@ -21,7 +21,6 @@ import matplotlib.pyplot as plt
 import simple_biped.utils.plot_utils as plut
 
 from simple_biped.admittance_ctrl import GainsAdmCtrl
-from simple_biped.simu import Simu
 from simple_biped.utils.LDS_utils import simulate_ALDS
 from simple_biped.gain_tuning.tune_gains_adm_ctrl_utils import optimize_gains_adm_ctrl, convert_cost_function, GainOptimizeAdmCtrl
 from simple_biped.hrp2_reduced import Hrp2Reduced
@@ -44,7 +43,7 @@ plut.FIGURE_PATH        = DATA_DIR
 #x0 = np.linalg.pinv(P)*conf.x0_com
 print("x0:\n", x0.T)
 
-K = Simu.get_default_contact_stiffness()
+K = conf.K_contact
 initial_gains = GainsAdmCtrl.get_default_gains(K)
 initial_guess = initial_gains.to_array()
 print("Initial gains:\n", initial_gains.to_string())
@@ -66,7 +65,7 @@ if(not LOAD_DATA):
         print("".center(60,'#'))
         print("Tuning gains for w_d4x={}".format(w_d4x))
         Q = convert_cost_function(conf.w_x, conf.w_dx, conf.w_d2x, conf.w_d3x, w_d4x)
-        optimal_gains[w_d4x] = optimize_gains_adm_ctrl(Q, N, dt, conf.max_iter, x0, initial_guess, do_plots=0)
+        optimal_gains[w_d4x] = optimize_gains_adm_ctrl(Q, N, dt, conf.max_iter, x0, initial_guess, K, do_plots=0)
         
         # update initial guess
         initial_guess = optimal_gains[w_d4x]

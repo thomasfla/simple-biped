@@ -25,6 +25,8 @@ from estimation.momentumEKF import MomentumEKF
 import getopt, sys, os, datetime
 from math import log
 
+import simple_biped.gain_tuning.conf_common as conf
+
 try:
     from IPython import embed
 except ImportError:
@@ -53,16 +55,16 @@ def com_traj(t, c_init, c_final, T):
     return (np.matrix([[py ],[pz]]), np.matrix([[vy ],[vz]]),
             np.matrix([[ay ],[az]]), np.matrix([[jy ],[jz]]), np.matrix([[sy ],[sz]]))
 
-CONTROLLER = 'tsid_rigid'             # either 'tsid_rigid' or 'tsid_flex_k' or 'tsid_adm' or 'tsid_mistry' or 'adm_ctrl'
+CONTROLLER = 'tsid_flex_k'             # either 'tsid_rigid' or 'tsid_flex_k' or 'tsid_adm' or 'tsid_mistry' or 'adm_ctrl'
 F_DISTURB = np.matrix([0e3, 0, 0]).T
 COM_SIN_AMP = np.array([0.0, 0.0])
-ZETA = .3   # with zeta=0.03 and ndt=100 it is unstable
-k = 1.0
-mu_simu = 0.3    # contact force friction coefficient
-mu_ctrl = 0.3    # contact force friction coefficient
+ZETA = conf.zetas[0]   # with zeta=0.03 and ndt=100 it is unstable
+k = conf.k
+mu_simu = conf.mu    # contact force friction coefficient
+mu_ctrl = conf.mu    # contact force friction coefficient
 fMin = 10.0
-tauc = 0*0.4*np.array([1.,10.,1.,10.])    # coulomb friction 'right hip', 'right knee', 'left hip', 'left knee'
-JOINT_TORQUES_CUT_FREQUENCY = 30.0
+tauc = conf.joint_coulomb_friction
+JOINT_TORQUES_CUT_FREQUENCY = conf.JOINT_TORQUES_CUT_FREQUENCY
 
 PLOT_FORCES                         = 1
 PLOT_FORCE_VEL                      = 0
@@ -79,12 +81,12 @@ SAVE_DATA                           = 1
 SHOW_FIGURES                        = 0
 
 #Simulation parameters
-dt  = 1e-3
-ndt = 10
-simulation_time = 2.0
-USE_ESTIMATOR = 0                # use real state for controller feedback
-T_DISTURB_BEGIN = 0.10           # Time at which the disturbance starts
-T_DISTURB_END   = 0.101          # Time at which the disturbance ends
+dt  = conf.dt_simu
+ndt = conf.ndt
+simulation_time = conf.T_simu
+USE_ESTIMATOR = conf.USE_ESTIMATOR  # use real state for controller feedback
+T_DISTURB_BEGIN = 0.10              # Time at which the disturbance starts
+T_DISTURB_END   = 0.101             # Time at which the disturbance ends
 gain_file = None #'/home/student/repos/simple_biped/data/gains/gains_tsid_flex_k_w_d4x=1e-10.npy' #None
 test_name = None
 
@@ -160,8 +162,8 @@ if(k>1.0):
     print 'Increasing ndt to %d'%(ndt)
 
 #robot parameters
-Ky = k*23770.
-Kz = k*239018.
+Ky = conf.Ky
+Kz = conf.Kz
 By = ZETA*2*sqrt(Ky) #50e0
 Bz = ZETA*2*sqrt(Kz) #500e0
 K = np.asmatrix(np.diagflat([Ky,Kz,Ky,Kz]))
@@ -183,9 +185,9 @@ g_vec = robot.model.gravity.linear[1:].A1            # gravity acc vector
 g = np.linalg.norm(g_vec)                            # gravity acceleration
 #se3.computeAllTerms(robot.model,robot.data,q0,v0)
 m = robot.data.mass[0]
-#q0[1]-=0.5*m*g/Kz
-q0 = np.matrix([[ 1.418e-04 , 5.687e-01 , 1.000e+00, -1.033e-03,  6.799e-04, -1.008e-04,  6.800e-04,  9.811e-05]]).T
-v0 = np.matrix([[ 9.470e-02 , 1.234e-05 ,-6.430e-03, -2.164e-01, -8.863e-03, -2.164e-01,  8.950e-03]]).T
+q0 = conf.q0
+v0 = conf.v0
+
 # project joint velocities in null space of contact Jacobian
 Jl,Jr = robot.get_Jl_Jr_world(q0)
 Jc = np.vstack([Jl[1:3],Jr[1:3]])    # (4, 7)
@@ -196,6 +198,8 @@ simu.init(q0, v0)
 f0,df0 = simu.f, simu.df #compute_f_df_from_q_v(q0,v0)
 c0,dc0,ddc0,dddc0 = robot.get_com_and_derivatives(q0,v0,f0,df0)
 l0 = 0
+print 'f0', f0.T
+print 'ddc0', ddc0.T
 
 COM_REF_START = c0.A1
 COM_REF_END   = c0.A1 + COM_SIN_AMP
@@ -207,8 +211,6 @@ ns = NoisyState(dt,robot,Ky,Kz)
 n_x, n_u, n_y = 9+4, 4, 9
 sigma_x_0 = 1e-2                    # initial state estimate std dev
 sigma_ddf   = 1e4*np.ones(4)          # control (i.e. force accelerations) noise std dev used in EKF
-if(CONTROLLER=='tsid_adm'):
-    sigma_ddf   = 1e4*np.ones(4)          # control (i.e. force accelerations) noise std dev used in EKF
 sigma_f     = np.array([ns.std_fy, ns.std_fz, ns.std_fy, ns.std_fz])  # force measurement noise std dev
 sigma_f_dist = 1e1*np.ones(2)          # external force noise std dev used in EKF
 sigma_c  = 1e-3*np.ones(2)             # CoM position measurement noise std dev
@@ -310,7 +312,7 @@ if(USE_ESTIMATOR):
     lgr.auto_log_variables(centroidalEstimator, ['x'], [vc], log_var_names=[['ekf_c_0', 'ekf_c_1', 'ekf_dc_0', 'ekf_dc_1', 'ekf_l', 'ekf_f_0', 'ekf_f_1',
                                                                              'ekf_f_2', 'ekf_f_3', 'ekf_df_0', 'ekf_df_1', 'ekf_df_2', 'ekf_df_3']])
 
-def loop(q, v, f, df, niter, ndt=None, dt=None, tsleep=.9, fdisplay=100):
+def loop(q, v, f, df, niter, ndt=None, dt=None, fdisplay=10):
     t0 = time.time()
     if dt  is not None: simu.dt  = dt
     if ndt is not None: simu.ndt = ndt

@@ -15,12 +15,9 @@ import time
 import pickle
 import numpy as np
 from numpy import matlib
-from numpy.linalg import eigvals
 import matplotlib.pyplot as plt
-import simple_biped.utils.plot_utils as plut
 
-from simple_biped.simu import Simu
-from simple_biped.utils.LDS_utils import simulate_ALDS, compute_integrator_dynamics, compute_weighted_quadratic_state_control_integral_ALDS
+from simple_biped.utils.LDS_utils import compute_integrator_dynamics
 import controlpy
 from pinocchio_inv_dyn.first_order_low_pass_filter import FirstOrderLowPassFilter
 
@@ -41,7 +38,6 @@ w_d4x_list  = conf.w_d4x_list
 x0          = conf.x0
 do_plots    = conf.do_plots         # if true it shows the plots
 
-K_contact = Simu.get_default_contact_stiffness()
 (H, A, B) = compute_integrator_dynamics(matlib.zeros((1,4)))
 Q = matlib.diagflat([w_x, w_dx, w_d2x, w_d3x])
 R = matlib.diagflat([1.0])
@@ -109,7 +105,10 @@ def simulate_LDS_with_LPF(A, B, K, x0, DT, N, ndt, fc, plot):
         u[:,i] = -K*x[:,i]
         x_pre = x[:,i]
         for ii in range(ndt):
-            u_filt[:,i] = np.matrix(lpf.filter_data(u[:,i].A1))
+            if(fc>0):
+                u_filt[:,i] = np.matrix(lpf.filter_data(u[:,i].A1)).T
+            else:
+                u_filt[:,i] = u[:,i]
             x_post = x_pre + dt * (A*x_pre + B*u_filt[:,i])
             x_pre = x_post
         x[:,i+1] = x_post
@@ -132,52 +131,50 @@ def simulate_LDS_with_LPF(A, B, K, x0, DT, N, ndt, fc, plot):
     return (x,u)           
 
 # SETUP
-#ny          = conf.ny
-#Q_pos_sqrt  = np.sqrt(conf.Q_pos)
-#R_pos_sqrt  = np.sqrt(conf.R_pos)
-#Q_d4x_sqrt  = np.sqrt(conf.Q_d4x)
-#R_d4x_sqrt  = np.sqrt(conf.R_d4x)
-#Q_sqrt      = np.sqrt(conf.Q_pos)
-#R_sqrt      = matlib.zeros((ny,ny))
-#T           = conf.T_cost_function
-#optimal_cost_pos = {}
-#optimal_cost_d4x = {}
+from simple_biped.gain_tuning.analyze_common import compute_cost_function_matrix, compute_costs
+nc          = conf.nc
+Q_x = compute_cost_function_matrix(nc, conf.w_x, conf.w_dx, conf.w_d2x, conf.w_d3x, 0.0)
+Q_u = compute_cost_function_matrix(nc, 0.0, 0.0, 0.0, 0.0, 1.0)
+optimal_cost_pos = {}
+optimal_cost_d4x = {}
 keys_sorted = optimal_gains.keys()
 keys_sorted.sort()
-x0 = x0[::2]
-fc = 30
-dt = 1e-3
+fc = -1
+dt = conf.dt_simu
 ndt = 10
 N  = int(conf.T_simu/dt)
+
+(H, A, B) = compute_integrator_dynamics(matlib.zeros((nc,4*nc)))
+P       = matlib.eye(5*nc)
+In = matlib.eye(conf.nc)
+
 for w_d4x in keys_sorted:
-    K = optimal_gains[w_d4x]
+    gains = optimal_gains[w_d4x]
+    K = np.hstack([gains[0]*In, gains[1]*In, gains[2]*In, gains[3]*In])
+    (x,u) = simulate_LDS_with_LPF(A, B, K, x0, dt, N, ndt, fc, do_plots)    
+    if(do_plots):
+        plt.title("log(w_d4x)=%.1f"%(np.log10(w_d4x)))
+        
+    xu, optimal_cost_pos[w_d4x], optimal_cost_d4x[w_d4x]  = compute_costs(x, u, dt, P, Q_x, Q_u)
 
-#    R_sqrt[0,0] = np.sqrt(w_d4x)    
-#    optimal_cost               = compute_weighted_quadratic_state_control_integral_ALDS(A, B, K, x0, T, Q_sqrt, R_sqrt, dt)
-#    optimal_cost_pos[w_d4x]    = compute_weighted_quadratic_state_control_integral_ALDS(A, B, K, x0, T, Q_pos_sqrt, R_pos_sqrt, dt)
-#    optimal_cost_d4x[w_d4x]    = compute_weighted_quadratic_state_control_integral_ALDS(A, B, K, x0, T, Q_d4x_sqrt, R_d4x_sqrt, dt)
-
-    H = A - B*K  # closed-loop transition matrix    
+#    H = A - B*K  # closed-loop transition matrix    
     print("".center(60,'#'))
     print("w_d4x={}".format(w_d4x))
 #    print("Optimal cost     {}".format(optimal_cost))
-#    print("Optimal cost state {}".format(optimal_cost_pos[w_d4x]))
-#    print("Optimal cost ctrl  {}".format(optimal_cost_d4x[w_d4x]))
+    print("Optimal cost state {}".format(optimal_cost_pos[w_d4x]))
+    print("Optimal cost ctrl  {}".format(optimal_cost_d4x[w_d4x]))
 #    print("Largest eigenvalues:", np.sort_complex(eigvals(H))[-4:].T)
-    
-    if(do_plots):
-        simulate_LDS_with_LPF(A, B, K, x0, dt, N, ndt, fc, 1)
-        plt.title("log(w_d4x)=%.1f"%(np.log10(w_d4x)))
 
-#plt.figure()
-#for w_d4x in keys_sorted:
-#    plt.plot(optimal_cost_pos[w_d4x], optimal_cost_d4x[w_d4x], ' *', markersize=30, label='w_d4x='+str(w_d4x))
-#plt.legend()
-#plt.xscale('log')
-#plt.yscale('log')
-#plt.xlabel('State tracking cost')
-#plt.ylabel('Control cost')
-#plt.grid(True);
+
+plt.figure()
+for w_d4x in keys_sorted:
+    plt.plot(optimal_cost_pos[w_d4x], optimal_cost_d4x[w_d4x], ' *', markersize=30, label='w_d4x='+str(w_d4x))
+plt.legend()
+plt.xscale('log')
+plt.yscale('log')
+plt.xlabel('State tracking cost')
+plt.ylabel('Control cost')
+plt.grid(True);
 
 if(do_plots):    
     plt.show()

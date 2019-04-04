@@ -34,11 +34,27 @@ keys                = ['ctrl', 'fDist', 'zeta', 'w_d4x']
 f_dists             = [0.]
 zetas               = [0.3]
 T_cost_function     = 10.0
-T_simu              = 2.0
 dt_cost_function    = 1e-2  # time step used for cost function of gain tuning
-dt_simu             = 1e-3  # time step used in simulations
-mu                  = 0.3
 nc                  = 2     # size of CoM vector
+
+# simulation parameters
+T_simu              = .01
+dt_simu             = 1e-3  # time step used by controller
+ndt                 = 10    # number of simulation time steps for each control time step
+mu                  = 0.3
+k                   = 0.01       # contact stiffness
+Ky                  = k*200000. # 23770
+Kz                  = k*200000.
+K_contact           = np.asmatrix(np.diagflat([Ky,Kz,Ky,Kz]))
+joint_coulomb_friction = 0*0.4*np.array([1.,10.,1.,10.])    # coulomb friction 'right hip', 'right knee', 'left hip', 'left knee'
+JOINT_TORQUES_CUT_FREQUENCY = 1000.0
+USE_ESTIMATOR       = 0
+mass                = 47.21657633
+g                   = 9.81
+q0 = np.matrix([[ 2.019e-04 , 5.6963e-01 , 1.000e+00, -1.033e-03,  6.799e-04, -1.008e-04,  6.800e-04,  9.811e-05]]).T
+v0 = np.matrix([[ 9.470e-02 , 1.234e-05 ,-6.430e-03, -2.164e-01, -8.863e-03, -2.164e-01,  8.950e-03]]).T
+# lower base so that initial contact forces compensate for gravity in Z direction
+q0[1] -=0.5*mass*g/Kz
 
 w_x         = 1.0
 w_dx        = 0e-1 #0.0

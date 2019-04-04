@@ -42,7 +42,7 @@ w_d4x_list  = conf.w_d4x_list
 x0          = conf.x0
 do_plots    = conf.do_plots         # if true it shows the plots
 
-K_contact = Simu.get_default_contact_stiffness()
+K_contact = conf.K_contact
 (H, A, B) = compute_integrator_dynamics(matlib.zeros((1,4)))
 Q = matlib.diagflat([w_x, w_dx, w_d2x, w_d3x])
 R = matlib.diagflat([1.0])

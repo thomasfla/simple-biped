@@ -226,7 +226,7 @@ def convert_cost_function(w_x, w_dx, w_d2x, w_d3x, w_d4x):
     Q       = P.T * Q_c * P
     return Q
     
-def optimize_gains_adm_ctrl(Q, N, dt, max_iter, x0=None, initial_guess=None, do_plots=0):
+def optimize_gains_adm_ctrl(Q, N, dt, max_iter, x0=None, initial_guess=None, K=None, do_plots=0):
     # User parameters
     PROFILE_ON = 0
     ny = 3
@@ -240,7 +240,9 @@ def optimize_gains_adm_ctrl(Q, N, dt, max_iter, x0=None, initial_guess=None, do_
     robot   = Hrp2Reduced(urdf, [pkg], loadModel=0, useViewer=0)
     q       = robot.q0.copy()
     v       = zero(robot.model.nv)
-    K       = Simu.get_default_contact_stiffness()
+    
+    if(K is None):
+        K   = Simu.get_default_contact_stiffness()
     
     if(initial_guess is None):
         initial_guess   = GainsAdmCtrl.get_default_gains(K).to_array()

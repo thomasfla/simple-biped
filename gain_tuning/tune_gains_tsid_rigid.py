@@ -18,7 +18,6 @@ from numpy import matlib
 import matplotlib.pyplot as plt
 import simple_biped.utils.plot_utils as plut
 
-from simple_biped.simu import Simu
 from simple_biped.utils.LDS_utils import compute_integrator_dynamics
 import controlpy
 from pinocchio_inv_dyn.first_order_low_pass_filter import FirstOrderLowPassFilter
@@ -40,7 +39,6 @@ w_d4x_list  = conf.w_d4x_list
 x0          = conf.x0
 do_plots    = conf.do_plots         # if true it shows the plots
 
-#K_contact = Simu.get_default_contact_stiffness()
 (H, A, B) = compute_integrator_dynamics(matlib.zeros((1,2)))
 Q = matlib.diagflat([w_x, w_dx])
 R = matlib.diagflat([1.0])
