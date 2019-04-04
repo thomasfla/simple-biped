@@ -59,8 +59,8 @@ class Simu:
         self.tauc = np.array([0.0,0.0,0.0,0.0]) # coulomb stiction 
         self.joint_torques_cut_frequency = 30.0
         self.tauq = zero(robot.model.nv)
-        self.frf = zero(6)
-        self.flf = zero(6)
+        self.frf, self.dfrf = zero(6), zero(6)
+        self.flf, self.dflf = zero(6), zero(6)
         self.dt  = dt       # Time step
         self.ndt = ndt      # Discretization (number of calls of step per time step)
         self.robot = robot
@@ -106,7 +106,8 @@ class Simu:
             self.Mrf0 = self.robot.data.oMf[self.RF].copy()  # Initial (i.e. 0-load) position of the R spring.
             self.Mlf0 = self.robot.data.oMf[self.LF].copy()  # Initial (i.e. 0-load) position of the L spring.
         
-        self.compute_f_df_from_q_v(self.q, self.v, compute_data = True)
+        self.compute_f_df(self.q, self.v, compute_data = True)
+        self.df = zero(4)
         self.com_p, self.com_v, self.com_a, self.com_j = self.robot.get_com_and_derivatives(self.q, self.v, self.f, self.df)
         self.am, self.dam, self.ddam = self.robot.get_angular_momentum_and_derivatives(self.q, self.v, self.f, self.df, self.Krf[0,0], self.Krf[1,1])
         self.com_s  = zero(2)        
@@ -134,12 +135,13 @@ class Simu:
         NQ,NV,NB,RF,LF,RK,LK = self.NQ,self.NV,self.NB,self.RF,self.LF,self.RK,self.LK
         
         if self.first_iter: 
-            self.compute_f_df_from_q_v(q,v)
+            self.compute_f_df(q,v)
             self.lpf = FirstOrderLowPassFilter(dt, self.joint_torques_cut_frequency, tauq.A1)
             self.first_iter = False
 
         # filter desired joint torques        
-        self.tauq = np.matrix(self.lpf.filter_data(self.tauq.A1)).T
+        if(self.joint_torques_cut_frequency>0):
+            self.tauq = np.matrix(self.lpf.filter_data(self.tauq.A1)).T
         
         # add Coulomb friction to joint torques
         for i in range(3,7):
@@ -162,7 +164,8 @@ class Simu:
         v_mean = v + 0.5*dt*dv
         v += dv*dt
         q   = se3.integrate(robot.model,q,v_mean*dt)
-        self.compute_f_df_from_q_v(q,v, False)
+        # WARNING: using the previous dv to compute df is an approximation!
+        self.compute_f_df(q,v,dv,False)
         self.dv = dv
         self.t += dt
         return q,v
@@ -170,7 +173,7 @@ class Simu:
     def reset(self):
         self.first_iter = True
         
-    def compute_f_df_from_q_v(self,q,v, compute_data = True):
+    def compute_f_df(self, q, v, dv=None, compute_data = True):
         '''Compute the contact forces and them derivative via q,v and the elastic model'''
         robot = self.robot
         NQ,NV,NB,RF,LF,RK,LK = self.NQ,self.NV,self.NB,self.RF,self.LF,self.RK,self.LK
@@ -183,21 +186,28 @@ class Simu:
 
         Mrf = self.Mrf0.inverse()*robot.data.oMf[RF]
         Mlf = self.Mlf0.inverse()*robot.data.oMf[LF]
-        vlf,vrf = robot.get_vlf_vrf_world(q,v)
+        vlf,vrf = robot.get_vlf_vrf_world(q,v,False)
         #extract only the free components (2d robot)
         vlf = np.vstack([vlf.linear[1:],vlf.angular[0]])
         vrf = np.vstack([vrf.linear[1:],vrf.angular[0]])
         qrf = np.vstack([Mrf.translation[1:],se3.rpy.matrixToRpy(Mrf.rotation)[0]])
         qlf = np.vstack([Mlf.translation[1:],se3.rpy.matrixToRpy(Mlf.rotation)[0]])
+        
+        if(dv is not None): 
+            alf,arf = robot.get_classic_alf_arf(q,v,dv,True)
+            alf = np.vstack([alf.linear[1:],alf.angular[0]])
+            arf = np.vstack([arf.linear[1:],arf.angular[0]])
 
         if(qrf[1]>0.0):
             self.frf = zero(6)
+            if(dv is not None): self.dfrf = zero(6)
             self.vrf = zero(3)
             if(self.right_foot_contact):
                 self.right_foot_contact = False
                 print "\nt %.3f SIMU INFO: Right foot contact broken!"%(self.t)
         else:
-            self.frf[[1,2,3]] = self.Krf*qrf + self.Brf*vrf                      # Right force in effector frame 
+            self.frf[[1,2,3]]  = self.Krf*qrf + self.Brf*vrf                      # Right force in effector frame 
+            if(dv is not None): self.dfrf[[1,2,3]] = self.Krf*vrf + self.Brf*arf
             if(self.frf[2]<0.0): self.frf[2]=0.0    # even if foot is inside ground normal force could be negative because of damping
             self.vrf = vrf
             if(not self.right_foot_contact):
@@ -207,12 +217,14 @@ class Simu:
             
         if(qlf[1]>0.0):
             self.flf = zero(6)
+            if(dv is not None): self.dflf = zero(6)
             self.vlf = zero(3)
             if(self.left_foot_contact):
                 self.left_foot_contact = False
                 print "\nt %.3f SIMU INFO: Left foot contact broken!"%(self.t)
         else:
-            self.flf[[1,2,3]] = self.Klf*qlf + self.Blf*vlf                      # Left force in effector frame
+            self.flf[[1,2,3]]  = self.Klf*qlf + self.Blf*vlf                      # Left force in effector frame
+            if(dv is not None): self.dflf[[1,2,3]] = self.Klf*vlf + self.Blf*alf                      # Left force vel in effector frame
             if(self.flf[2]<0.0): self.flf[2]=0.0    # even if foot is inside ground normal force could be negative because of damping
             self.vlf = vlf
             if(not self.left_foot_contact):
@@ -220,7 +232,8 @@ class Simu:
                 self.Mlf0.translation[1] = self.robot.data.oMf[self.LF].translation[1] # reset tangential 0-load position
                 print "\nt %.3f SIMU INFO: Left foot contact made!"%(self.t)
 
-        self.f=np.vstack([self.flf[1:3],self.frf[1:3]]) #  forces in the world frame
+        self.f =np.vstack([ self.flf[1:3], self.frf[1:3]]) #  forces in the world frame
+        if(dv is not None): self.df=np.vstack([self.dflf[1:3],self.dfrf[1:3]]) #  force vel in the world frame
         self.df=np.vstack([(self.Klf*self.vlf)[0:2],(self.Krf*self.vrf)[0:2]])
         
         if(self.slippage_allowed):
@@ -246,14 +259,17 @@ class Simu:
                     print "t %.3f SIMU WARNING: friction cone violation ended with max violation %.3f "%(self.t, self.friction_cones_max_violation)
                 self.friction_cones_violated = False
                 self.friction_cones_max_violation = 0.0
-
-        return self.f,self.df
+        
+        if(dv is not None):
+            return self.f,self.df
+        return self.f
         
     def simu(self,q,v,tau):
         '''Simu performs self.ndt steps each lasting self.dt/self.ndt seconds.'''
         vlf_0, vrf_0 = self.vlf.copy(), self.vrf.copy()
         # compute df based on current contact point velocities
         df_0 = np.vstack([(self.Klf*self.vlf)[0:2],(self.Krf*self.vrf)[0:2]])
+#        df_0 = self.df.copy()
         com_p_0, com_v_0, com_a_0, com_j_0 = self.robot.get_com_and_derivatives(q, v, self.f, df_0)
 #        f_0 = self.f.copy()
         self.q = q.copy()
@@ -267,13 +283,14 @@ class Simu:
 #        self.df     = (self.f - f_0)/self.dt    # this df is the average over the time step
         
         df_end = np.vstack([(self.Klf*self.vlf)[0:2],(self.Krf*self.vrf)[0:2]])
+#        df_end = self.df.copy()
         self.df = df_end
         self.ddf    = (df_end-df_0)/self.dt    # this ddf is the average over the time step
         
-        self.com_p, self.com_v, com_a, com_j = self.robot.get_com_and_derivatives(self.q, self.v, self.f, df_end)
+        self.com_p, self.com_v, com_a_1, com_j_1 = self.robot.get_com_and_derivatives(self.q, self.v, self.f, df_end)
         self.com_a = (self.com_v - com_v_0)/self.dt
-        self.com_j = (com_a - com_a_0)/self.dt
-        self.com_s = (com_j - com_j_0)/self.dt
+        self.com_j = (com_a_1 - com_a_0)/self.dt
+        self.com_s = (com_j_1 - com_j_0)/self.dt
         self.am, self.dam, self.ddam = self.robot.get_angular_momentum_and_derivatives(self.q, self.v, self.f, self.df, self.Krf[0,0], self.Krf[1,1])
         
         return self.q, self.v, self.f, self.df

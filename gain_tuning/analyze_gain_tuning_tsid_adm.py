@@ -15,6 +15,7 @@ from simple_biped.tsid_admittance import GainsTsidAdm
 from simple_biped.gain_tuning.tune_gains_tsid_adm_utils import convert_tsid_adm_gains_to_integrator_gains
 from simple_biped.simu import Simu
 from simple_biped.gain_tuning.analyze_common import analyze_results
+import matplotlib.pyplot as plt
 
 np.set_printoptions(precision=1, linewidth=200, suppress=True)
 

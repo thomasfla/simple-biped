@@ -87,7 +87,7 @@ simulation_time = conf.T_simu
 USE_ESTIMATOR = conf.USE_ESTIMATOR  # use real state for controller feedback
 T_DISTURB_BEGIN = 0.10              # Time at which the disturbance starts
 T_DISTURB_END   = 0.101             # Time at which the disturbance ends
-gain_file = None #'/home/student/repos/simple_biped/data/gains/gains_tsid_flex_k_w_d4x=1e-10.npy' #None
+gain_file = '/home/student/repos/simple_biped/gain_tuning/../data/gains/gains_tsid_flex_k_w_d4x=1e-09.npy'
 test_name = None
 
 INPUT_PARAMS = ['controller=', 'com_sin_amp=', 'f_dist=', 'zeta=', 'use_estimator=', 'T=', 'k=', 'gain_file=', 'test_name=']
@@ -198,8 +198,6 @@ simu.init(q0, v0)
 f0,df0 = simu.f, simu.df #compute_f_df_from_q_v(q0,v0)
 c0,dc0,ddc0,dddc0 = robot.get_com_and_derivatives(q0,v0,f0,df0)
 l0 = 0
-print 'f0', f0.T
-print 'ddc0', ddc0.T
 
 COM_REF_START = c0.A1
 COM_REF_END   = c0.A1 + COM_SIN_AMP

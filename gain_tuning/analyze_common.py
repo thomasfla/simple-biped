@@ -176,7 +176,7 @@ def analyze_results(conf, compute_system_matrices, P):
                 lkf = lgr.get_vector('simu_lkf', nf/nc)[:,N0:]
                 rkf = lgr.get_vector('simu_rkf', nf/nc)[:,N0:]
                 f   = np.vstack((lkf,rkf))
-                
+                                
                 # compute state cost and control cost for real system
                 N = com_p.shape[1]
                 time = np.arange(N*dt, step=dt)
