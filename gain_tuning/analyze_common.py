@@ -58,30 +58,31 @@ def compute_costs(x, u, dt, P, Q_x, Q_u):
     return xu_proj, np.sqrt(state_cost/T), np.sqrt(control_cost/T)
     
 
-def plot_real_vs_expected_com_state(time, com_real, com_expected, nc, w_d4x, ctrl, name=''):
+def plot_real_vs_expected_com_state(time, com_real, com_expected, axis, nc, w_u, fig_name=None):
     fi, ax = plt.subplots(5, 1, sharex=True);
+    axstr = ['Y', 'Z']
     i = 0
-    ax[i].plot(time, com_expected[0,:].A1, label='expected')
-    ax[i].plot(time, com_real[0,:].A1, '--', label='real')
-    ax[i].set_title(r'CoM Pos Y, log($w_{u}$)=%.2f'%(np.log10(w_d4x)))
+    ax[i].plot(time, com_expected[axis,:].A1, label='expected')
+    ax[i].plot(time, com_real[axis,:].A1, '--', label='real')
+    ax[i].set_title(r'CoM Pos '+axstr[axis]+', log($w_{u}$)=%.2f'%(np.log10(w_u)))
     ax[i].legend()
     i += 1
-    ax[i].plot(time, com_expected[nc,:].A1, label='expected')
-    ax[i].plot(time, com_real[nc,:].A1, '--', label='real')
-    ax[i].set_title('CoM Vel Y')
+    ax[i].plot(time, com_expected[nc+axis,:].A1, label='expected')
+    ax[i].plot(time, com_real[nc+axis,:].A1, '--', label='real')
+    ax[i].set_title('CoM Vel '+axstr[axis])
     i += 1
-    ax[i].plot(time, com_expected[2*nc,:].A1, label='expected')
-    ax[i].plot(time, com_real[2*nc,:].A1, '--', label='real')
-    ax[i].set_title('Com Acc Y')
+    ax[i].plot(time, com_expected[2*nc+axis,:].A1, label='expected')
+    ax[i].plot(time, com_real[2*nc+axis,:].A1, '--', label='real')
+    ax[i].set_title('Com Acc '+axstr[axis])
     i += 1
-    ax[i].plot(time, com_expected[3*nc,:].A1, label='expected')
-    ax[i].plot(time, com_real[3*nc,:].A1, '--', label='real')
-    ax[i].set_title('Com Jerk Y')
+    ax[i].plot(time, com_expected[3*nc+axis,:].A1, label='expected')
+    ax[i].plot(time, com_real[3*nc+axis,:].A1, '--', label='real')
+    ax[i].set_title('Com Jerk '+axstr[axis])
     i += 1
-    ax[i].plot(time, com_expected[4*nc,:].A1, label='expected')
-    ax[i].plot(time, com_real[4*nc,:].A1, '--', label='real')
-    ax[i].set_title('Com Snap Y')
-    plut.saveFigure('exp_vs_real_com_Y_'+ctrl+'_w_u_%.2f'%(np.log10(w_d4x))+name)
+    ax[i].plot(time, com_expected[4*nc+axis,:].A1, label='expected')
+    ax[i].plot(time, com_real[4*nc+axis,:].A1, '--', label='real')
+    ax[i].set_title('Com Snap '+axstr[axis])
+    if(fig_name is not None): plut.saveFigure(fig_name)
     
 
 def analyze_results(conf, compute_system_matrices, P):
@@ -237,7 +238,9 @@ def analyze_results(conf, compute_system_matrices, P):
                 
             if(plut.SAVE_FIGURES or conf.do_plots):
                 # plot real CoM trajectory VS expected CoM trajectory
-                plot_real_vs_expected_com_state(time, com_real, xu_proj, nc, w_d4x, ctrl)
+                fig_name = 'exp_vs_real_com_Y_'+ctrl+'_w_u_%.2f'%(np.log10(w_d4x))
+                plot_real_vs_expected_com_state(time, com_real, xu_proj, 0, nc, w_d4x, fig_name)
+#                plot_real_vs_expected_com_state(time, com_real, xu_proj, 1, nc, w_d4x)
 #                plt.figure()
 #                plt.plot(time, com_j[0,:].A1)
 #                print 'max jerk:', np.max(np.abs(com_j[0,:])), np.max(np.abs(com_j))
