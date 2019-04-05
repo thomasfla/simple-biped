@@ -30,13 +30,13 @@ import simple_biped.gain_tuning.conf_adm_ctrl as conf
 
 DATA_DIR                = conf.DATA_DIR + conf.GAINS_DIR_NAME
 OUTPUT_DATA_FILE_NAME   = conf.GAINS_FILE_NAME # 'gains_adm_ctrl'
-SAVE_DATA               = 1
-LOAD_DATA               = 0 # if 1 it tries to load the gains from the specified binary file
+SAVE_DATA               = conf.SAVE_DATA
+LOAD_DATA               = conf.LOAD_DATA # if 1 it tries to load the gains from the specified binary file
 N                       = int(conf.T_cost_function/conf.dt_cost_function)
 dt                      = conf.dt_cost_function
 w_d4x_list              = conf.w_d4x_list
 x0                      = conf.x0
-plut.SAVE_FIGURES       = 1
+plut.SAVE_FIGURES       = conf.SAVE_FIGURES
 plut.FIGURE_PATH        = DATA_DIR
 
 #P = compute_projection_to_com_state()
@@ -105,15 +105,20 @@ initial_cost_ddf    = gain_optimizer.cost_function(normalized_initial_gains)
 
 if(conf.do_plots):
     H = gain_optimizer.compute_transition_matrix(initial_gains.to_array());
-    simulate_ALDS(H, x0, dt, N, 1, 0)
+    x = simulate_ALDS(H, x0, dt, N, 1, 0)
+    f, ax = plt.subplots(2, 1, sharex=True);
+    time = np.arange(N*dt, step=dt)
+    for i in range(2):
+        ax[i].plot(time, x[i,:].A1)
+        ax[i].set_title(str(i))
     plt.title("Initial gains")
 
 optimal_cost_pos = {}
 optimal_cost_ddf = {}
 keys_sorted = optimal_gains.keys()
 keys_sorted.sort()
-print("Initial cost pos {}".format(initial_cost_pos))
-print("Initial cost ddf {}".format(initial_cost_ddf))
+print("Initial cost state {}".format(initial_cost_pos))
+print("Initial cost ctrl  {}".format(initial_cost_ddf))
 
 for w_d4x in keys_sorted:
     gains = optimal_gains[w_d4x]
@@ -130,7 +135,7 @@ for w_d4x in keys_sorted:
     
     
     print("".center(100,'#'))
-    print("w_d4x={}".format(w_d4x))
+    print("w_u={}".format(w_d4x))
 #    print("Initial cost     {}".format(initial_cost))
     
 #    print("Optimal cost     {}".format(optimal_cost))    
@@ -141,8 +146,13 @@ for w_d4x in keys_sorted:
     print("Largest eigenvalues:", np.sort_complex(eigvals(H))[-4:].T)
     
     if(conf.do_plots):
-        simulate_ALDS(H, x0, dt, N, 1, 0)
-        plt.title("log(w_d4x)=%.1f"%(np.log10(w_d4x)))
+        x = simulate_ALDS(H, x0, dt, N, 0, 0)
+        f, ax = plt.subplots(2, 1, sharex=True);
+        time = np.arange(N*dt, step=dt)
+        for i in range(2):
+            ax[i].plot(time, x[i,:].A1)
+            ax[i].set_title(str(i))
+        plt.title("log(w_u)=%.1f"%(np.log10(w_d4x)))
 
 plt.figure()
 for w_d4x in keys_sorted:
