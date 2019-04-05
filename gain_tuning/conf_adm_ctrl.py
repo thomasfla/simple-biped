@@ -28,4 +28,3 @@ x0[ny,0]    = 47.2 * .1     # initial CoM velocity in Y direction times robot ma
 #x0_com      = 1e-3*np.matrix([[ 0.0, 0.0, 1.1e+02, -7.5e-02, 6.0e+01, -3.0e+02, -2.8e-11, 2.9e-11, 0.0, 0.0]]).T #2.6e+08, 6.7e+07]]).T
 
 max_iter    = 1        # max number of iterations of algorithm to optimize gains
-do_plots    = 0
