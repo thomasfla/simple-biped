@@ -36,7 +36,7 @@ w_dx        = conf.w_dx
 w_d2x       = conf.w_d2x
 w_d3x       = conf.w_d3x
 w_d4x_list  = conf.w_d4x_list
-x0          = conf.x0
+x0          = conf.x0[:4,0]
 do_plots    = conf.do_plots         # if true it shows the plots
 
 (H, A, B) = compute_integrator_dynamics(matlib.zeros((1,2)))

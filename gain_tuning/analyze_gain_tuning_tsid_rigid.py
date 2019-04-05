@@ -19,7 +19,7 @@ np.set_printoptions(precision=1, linewidth=200, suppress=True)
 def analyze_gain_tuning_tsid_rigid(conf):
     nc = conf.nc
     (H, A, B) = compute_integrator_dynamics(matlib.zeros((nc,4*nc)))
-    In = matlib.eye(conf.nc)
+    In = matlib.eye(nc)
     A[nc:,:] = 0.0
     B[nc:2*nc,:] = In
     B[3*nc:,:] = 0.0
