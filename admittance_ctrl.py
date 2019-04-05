@@ -57,7 +57,7 @@ class GainsAdmCtrl:
     @staticmethod
     def get_default_gains(K):
         gains = GainsAdmCtrl()
-        K_inv = np.linalg.inv(K)
+        K_inv = 2e-5*matlib.eye(4) #np.linalg.inv(K)
         gains.Kp_com, gains.Kd_com, gains.Kf = 30.6694018561, 10.2970910213, 400*K_inv # poles 5, 15, 25, 35
         gains.kp_bar = 1e4
         gains.kd_bar = 200.0
