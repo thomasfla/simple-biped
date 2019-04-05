@@ -24,7 +24,7 @@ def analyze_gain_tuning_adm_ctrl(conf):
     ny, nf, dt = conf.ny, conf.nf, conf.dt_simu
     N       =  int(conf.T_simu/dt)
     
-    K               = Simu.get_default_contact_stiffness()
+    K               = conf.K_contact #Simu.get_default_contact_stiffness()
     initial_gains   = GainsAdmCtrl.get_default_gains(K).to_array()
     gain_optimizer  = GainOptimizeAdmCtrl(robot, q, v, K, ny, nf, initial_gains, dt, conf.x0, N, np.eye(2*ny+3*nf))
     
