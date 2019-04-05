@@ -55,7 +55,7 @@ def com_traj(t, c_init, c_final, T):
     return (np.matrix([[py ],[pz]]), np.matrix([[vy ],[vz]]),
             np.matrix([[ay ],[az]]), np.matrix([[jy ],[jz]]), np.matrix([[sy ],[sz]]))
 
-CONTROLLER = 'tsid_flex_k'             # either 'tsid_rigid' or 'tsid_flex_k' or 'tsid_adm' or 'tsid_mistry' or 'adm_ctrl'
+CONTROLLER = 'adm_ctrl'             # either 'tsid_rigid' or 'tsid_flex_k' or 'tsid_adm' or 'tsid_mistry' or 'adm_ctrl'
 F_DISTURB = np.matrix([0e3, 0, 0]).T
 COM_SIN_AMP = np.array([0.0, 0.0])
 ZETA = conf.zetas[0]   # with zeta=0.03 and ndt=100 it is unstable
@@ -87,7 +87,7 @@ simulation_time = conf.T_simu
 USE_ESTIMATOR = conf.USE_ESTIMATOR  # use real state for controller feedback
 T_DISTURB_BEGIN = 0.10              # Time at which the disturbance starts
 T_DISTURB_END   = 0.101             # Time at which the disturbance ends
-gain_file = '/home/student/repos/simple_biped/gain_tuning/../data/gains/gains_tsid_flex_k_w_d4x=1e-09.npy'
+gain_file = None #'/home/student/repos/simple_biped/gain_tuning/../data/gains/gains_tsid_flex_k_w_d4x=1e-09.npy'
 test_name = None
 
 INPUT_PARAMS = ['controller=', 'com_sin_amp=', 'f_dist=', 'zeta=', 'use_estimator=', 'T=', 'k=', 'gain_file=', 'test_name=']
@@ -228,8 +228,6 @@ if(gain_file is not None):
 
 w_post = 0.001                  # postural task weight
 Kp_post = 10                    # postural task proportional feedback gain
-Kp_com = 50.0                  # com proportional feedback gain
-Kd_com = 2*sqrt(Kp_com)         # com derivative feedback gain
 if(CONTROLLER=='tsid_flex_k'):
     w_post  = 0.3
     ddf_max = 2e4 #4e5 #Kz
@@ -260,7 +258,8 @@ elif(CONTROLLER=='adm_ctrl'):
 
     tsid = AdmittanceControl(robot, dt, q_cmd, Ky, Kz, w_post, Kp_post, gains, fMin, mu_ctrl, centroidalEstimator)
 elif(CONTROLLER=='tsid_mistry'):
-    w_post  = 1e-3                  # postural task weight
+    Kp_com = 50.0                  # com proportional feedback gain
+    Kd_com = 2*sqrt(Kp_com)         # com derivative feedback gain
     tsid = TsidMistry(robot, Ky, Kz, By, Bz, w_post, Kp_post, Kp_com, Kd_com, dt, centroidalEstimator)
 
 if(not USE_ESTIMATOR):
