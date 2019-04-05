@@ -63,7 +63,7 @@ def simulate_ALDS(H, x0, dt, N, plot=False, show_plot=None):
     if plot:
         max_rows = 4
         n_cols = 1 + (n+1)/max_rows
-        n_rows = int(np.ceil(n/n_cols))
+        n_rows = int(np.ceil(float(n)/n_cols))
         f, ax = plt.subplots(n_rows, n_cols, sharex=True);
         ax = ax.reshape(n_cols*n_rows)
         time = np.arange(N*dt, step=dt)
