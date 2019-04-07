@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 np.set_printoptions(precision=1, linewidth=200, suppress=True)
 
 def analyze_gain_tuning_tsid_adm(conf):
-    K_contact = Simu.get_default_contact_stiffness()
+    K_contact = conf.K_contact
     nc = conf.nc
     (H, A, B) = compute_integrator_dynamics(matlib.zeros((nc,4*nc)))
     P       = matlib.eye(5*conf.nc)
