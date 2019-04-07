@@ -20,8 +20,8 @@ def get_gains_file_name(BASE_NAME, w_d4x):
     return BASE_NAME+'_w_d4x='+str(w_d4x)+'.npy'
     
 DATA_DIR                = str(os.path.dirname(os.path.abspath(__file__)))+'/../data/'
-TESTS_DIR_NAME          = 'push_recovery_slip/'
-GAINS_DIR_NAME          = 'gains/'
+TESTS_DIR_NAME          = 'k_1/push_recovery_slip/'
+GAINS_DIR_NAME          = 'gains_k_1/'
 DATA_FILE_NAME          = 'logger_data.npz'
 OUTPUT_DATA_FILE_NAME   = 'summary_data'
 SAVE_DATA               = 1
@@ -37,18 +37,18 @@ dt_cost_function    = 1e-2  # time step used for cost function of gain tuning
 nc                  = 2     # size of CoM vector
 
 # simulation parameters
-T_simu              = 2.
+T_simu              = 2.0
 dt_simu             = 1e-3  # time step used by controller
 ndt                 = 10    # number of simulation time steps for each control time step
 mu                  = 0.3
-k                   = 0.1       # contact stiffness multiplier
+k                   = 1.0       # contact stiffness multiplier
 Ky                  = k*200000. # 23770
 Kz                  = k*200000.
 K_contact           = np.asmatrix(np.diagflat([Ky,Kz,Ky,Kz]))
 zetas               = [0.3]     # contact damping ratio
-joint_coulomb_friction = 0*0.4*np.array([1.,10.,1.,10.])    # coulomb friction 'right hip', 'right knee', 'left hip', 'left knee'
-JOINT_TORQUES_CUT_FREQUENCY = -1000.0
-USE_ESTIMATOR       = 0
+joint_coulomb_friction = 1*0.4*np.array([1.,10.,1.,10.])    # coulomb friction 'right hip', 'right knee', 'left hip', 'left knee'
+JOINT_TORQUES_CUT_FREQUENCY = 30.0
+USE_ESTIMATOR       = 1
 
 # INITIAL ROBOT STATE
 mass                = 47.21657633

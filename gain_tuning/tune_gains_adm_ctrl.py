@@ -65,7 +65,9 @@ if(not LOAD_DATA):
         print("".center(60,'#'))
         print("Tuning gains for w_d4x={}".format(w_d4x))
         Q = convert_cost_function(conf.w_x, conf.w_dx, conf.w_d2x, conf.w_d3x, w_d4x)
-        optimal_gains[w_d4x] = optimize_gains_adm_ctrl(Q, N, dt, conf.max_iter, x0, initial_guess, K, do_plots=0)
+        
+        optimal_gains[w_d4x] = initial_guess
+#        optimal_gains[w_d4x] = optimize_gains_adm_ctrl(Q, N, dt, conf.max_iter, x0, initial_guess, K, do_plots=0)
         
         # update initial guess
         initial_guess = optimal_gains[w_d4x]
@@ -136,6 +138,7 @@ for w_d4x in keys_sorted:
     
     print("".center(100,'#'))
     print("w_u={}".format(w_d4x))
+    print("Optimal gains:\n", GainsAdmCtrl(gains).to_string())
 #    print("Initial cost     {}".format(initial_cost))
     
 #    print("Optimal cost     {}".format(optimal_cost))    
