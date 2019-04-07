@@ -21,6 +21,7 @@ from simple_biped.utils.utils_thomas import finite_diff
 
 import itertools
 import pickle
+import os
 
 np.set_printoptions(precision=1, linewidth=200, suppress=True)
 
@@ -253,7 +254,7 @@ def analyze_results(conf, compute_system_matrices, P):
                 pickle.dump(res, f, pickle.HIGHEST_PROTOCOL)
     
     # plot expected costs VS real costs
-    keys_sorted = optimal_gains.keys()
+    keys_sorted = w_d4x_list #optimal_gains.keys()
     keys_sorted.sort()
         
     plt.figure()
@@ -430,6 +431,7 @@ def plot_performance(name, res_list, conf_list, marker_list, xlabel, ylabel,
     plt.close('all')
 
 def compare_controllers(conf_list, marker_list):   
+    MIN_STATE_COST   = 2e-4
     MAX_STATE_COST   = 1.0
     MAX_CONTROL_COST = 1e6
     MAX_JERK_COST    = 1e3
@@ -451,23 +453,29 @@ def compare_controllers(conf_list, marker_list):
     plot_performance('roc_performance_comparison', res_list, conf_list, marker_list, 
                      'State cost', 'Snap cost',
                      'cost_state', 'cost_control', 
-                     8e-4, 9.0,
+                     MIN_STATE_COST, 9.0,
                      MAX_STATE_COST, MAX_CONTROL_COST, 
                      np.nan, MAX_CONTROL_COST)
  
-    plot_performance('roc_performance_comparison_jerk', res_list, conf_list, marker_list, 
-                     'State cost', 'Jerk cost',
-                     'cost_state', 'cost_control_jerk', 
-                     8e-4, 1.0,
-                     MAX_STATE_COST, MAX_JERK_COST, 
-                     np.nan, MAX_JERK_COST)
-   
-    plot_performance('roc_performance_comparison_jerk_max', res_list, conf_list, marker_list, 
-                     'State cost', 'Max Jerk',
-                     'cost_state', 'jerk_max', 
-                     8e-4, 1.0,
-                     MAX_STATE_COST, MAX_JERK_COST, 
-                     np.nan, MAX_JERK_COST)
+#    try: os.makedirs(plut.FIGURE_PATH+'/jerk_2_norm');
+#    except OSError: pass
+#    
+#    plot_performance('jerk_2_norm/roc_performance_comparison_jerk', res_list, conf_list, marker_list, 
+#                     'State cost', 'Jerk cost',
+#                     'cost_state', 'cost_control_jerk', 
+#                     MIN_STATE_COST, 1.0,
+#                     MAX_STATE_COST, MAX_JERK_COST, 
+#                     np.nan, MAX_JERK_COST)
+#   
+#    try: os.makedirs(plut.FIGURE_PATH+'/jerk_max');
+#    except OSError: pass
+#        
+#    plot_performance('jerk_max/roc_performance_comparison_jerk_max', res_list, conf_list, marker_list, 
+#                     'State cost', 'Max Jerk',
+#                     'cost_state', 'jerk_max', 
+#                     MIN_STATE_COST, 1.0,
+#                     MAX_STATE_COST, MAX_JERK_COST, 
+#                     np.nan, MAX_JERK_COST)
      
     if(SHOW_FIGURES):
         plt.show()
