@@ -357,17 +357,16 @@ def plot_performance(name, res_list, conf_list, marker_list, xlabel, ylabel,
                 label_done = True
         
     # find Pareto-optimal points
-    optimal_points = []
-    suboptimal_points = []
+    optimal_points, suboptimal_points = {}, {}
     for p0 in points:
         if np.isnan(p0.x): continue
         p0_optimal = True
         for p1 in points:
             if p1.x<p0.x and p1.y<p0.y:
                 p0_optimal = False
-                suboptimal_points += [p0]
+                suboptimal_points[p0.x] = p0
                 break
-        if p0_optimal: optimal_points += [p0]
+        if p0_optimal: optimal_points[p0.x] = p0
     
     # plot with colors corresponding to values of w_u
     plt.figure()
@@ -380,26 +379,64 @@ def plot_performance(name, res_list, conf_list, marker_list, xlabel, ylabel,
     plut.saveFigure(name)
     
     # plot with colors corresponding to Pareto optimality
+    from simple_biped.utils.utils_thomas import restert_viewer_server
+    from simple_biped.robot_model_path import pkg, urdf
+    from simple_biped.hrp2_reduced import Hrp2Reduced
+    import time as time_pkg
+    if conf.useViewer:
+        restert_viewer_server()
+        robot = Hrp2Reduced(urdf,[pkg],loadModel=True,useViewer=1)
+        robot.display(robot.q0)
+        robot.viewer.setCameraTransform(0,conf.camera_transform)
+        print 'Showing video of suboptimal tests:'
+
+    def show_video(dt, robot, lgr, p):
+        q = lgr.get_vector('simu_q', robot.model.nq)
+        robot.display(q[:,0])
+        print '- %12s cost x=%.1f u=%.1f log(w_u)=%.1f in'%(
+            p.conf.controllers[0], np.log10(p.x), np.log10(p.y), np.log10(p.w_u)),
+        for i in range(3,0,-1): print i,; time_pkg.sleep(1); 
+        print ''
+        
+        t0 = time_pkg.time()
+        for i in range(q.shape[1]):
+            if not i % conf.fdisplay:
+                while((time_pkg.time()-t0)<(i*dt)):
+                    time_pkg.sleep(0.01*dt) # 1% jitter
+                robot.display(q[:,i])
+            
+    if(conf.useViewer):
+        keys_sorted = suboptimal_points.keys()
+        keys_sorted.sort(); keys_sorted.reverse()
+        for key in keys_sorted:
+            p = suboptimal_points[key]
+            test_name = p.conf.get_test_name(p.conf.controllers[0], p.conf.zetas[0], 
+                                             p.conf.f_dists[0], p.w_u)
+            DATA_DIR = p.conf.DATA_DIR + p.conf.TESTS_DIR_NAME + p.conf.controllers[0] +'/'
+            INPUT_FILE = DATA_DIR + test_name + '/' + p.conf.DATA_FILE_NAME
+            lgr = RaiLogger()
+            lgr.load(INPUT_FILE)        
+            show_video(conf.dt_simu, robot, lgr, p)
+        print '\nShowing video of Pareto-optimal tests:'
+        
     index = 0
-    for p in optimal_points:
+    keys_sorted = optimal_points.keys()
+    keys_sorted.sort(); keys_sorted.reverse()
+    for key in keys_sorted:
+        p = optimal_points[key]
         # LOAD DATA FOR PLOT
         test_name = p.conf.get_test_name(p.conf.controllers[0], p.conf.zetas[0], 
                                          p.conf.f_dists[0], p.w_u)
         DATA_DIR = p.conf.DATA_DIR + p.conf.TESTS_DIR_NAME + p.conf.controllers[0] +'/'
         INPUT_FILE = DATA_DIR + test_name + '/' + p.conf.DATA_FILE_NAME
         # SETUP LOGGER
-        nc, nf, dt, N0 = conf.nc, conf.nf, conf.dt_simu, 0
+        nc, dt, N0 = conf.nc, conf.dt_simu, 0
         lgr = RaiLogger()
         lgr.load(INPUT_FILE)
         com_p = lgr.get_vector('simu_com_p', nc)[:,N0:]
         com_ref = lgr.get_vector('tsid_comref', nc)[:,N0:]
         com_err = com_p-com_ref
-#        com_v = lgr.get_vector('simu_com_v', nc)[:,N0:]
-#        com_a = lgr.get_vector('simu_com_a', nc)[:,N0:]
         com_j = lgr.get_vector('simu_com_j', nc)[:,N0:]
-#        lkf = lgr.get_vector('simu_lkf', nf/nc)[:,N0:]
-#        rkf = lgr.get_vector('simu_rkf', nf/nc)[:,N0:]
-#        f   = np.vstack((lkf,rkf))
         # compute state cost and control cost for real system
         N = com_p.shape[1]
         time = np.arange(N*dt, step=dt)
@@ -415,12 +452,13 @@ def plot_performance(name, res_list, conf_list, marker_list, xlabel, ylabel,
         plut.saveFigure(name+'_pareto_%.2f_%s'%(np.log10(p.x), p.conf.controllers[0]))
         index += 1
         
-        
+        if(conf.useViewer):
+            show_video(dt, robot, lgr, p)
         
     plt.figure()
-    for p in optimal_points:
+    for p in optimal_points.itervalues():
         plt.plot(p.x, p.y, ' '+p.mark, color='r', markersize=30, alpha = 0.75, label=p.lbl)
-    for p in suboptimal_points:
+    for p in suboptimal_points.itervalues():
         plt.plot(p.x, p.y, ' '+p.mark, color='b', markersize=30, alpha = 0.75, label=p.lbl)
     plt.legend();           plt.grid(True);
     plt.xlabel(xlabel);     plt.ylabel(ylabel)

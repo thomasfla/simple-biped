@@ -20,13 +20,14 @@ def get_gains_file_name(BASE_NAME, w_d4x):
     return BASE_NAME+'_w_d4x='+str(w_d4x)+'.npy'
     
 DATA_DIR                = str(os.path.dirname(os.path.abspath(__file__)))+'/../data/'
-TESTS_DIR_NAME          = 'k_1/push_recovery_slip/'
+TESTS_DIR_NAME          = 'k_0.01/push_recovery_slip/'
+TESTS_DIR_NAME          = 'k_0.1/push_recovery_slip_bw_ekf_coulomb/'
 GAINS_DIR_NAME          = 'gains_k_1/'
 DATA_FILE_NAME          = 'logger_data.npz'
 OUTPUT_DATA_FILE_NAME   = 'summary_data'
-SAVE_DATA               = 1
+SAVE_DATA               = 0
 LOAD_DATA               = 0
-SAVE_FIGURES            = 1
+SAVE_FIGURES            = 0
 
 TIME_BETWEEN_TESTS  = 10.0
 
@@ -65,3 +66,8 @@ w_d3x       = 0e-6
 w_d4x_list  = np.logspace(-6.0, -12.0, num=7)
 
 do_plots    = 0
+
+useViewer   = 1
+fdisplay    = 10
+camera_transform = [1.9154722690582275, -0.2266872227191925, 0.1087859719991684,
+                    0.5243823528289795, 0.518651008605957, 0.4620114266872406, 0.4925136864185333]
