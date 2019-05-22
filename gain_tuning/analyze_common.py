@@ -10,6 +10,7 @@ Analyze the performance of a controller with different sets of gains.
 from numpy import matlib
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.lines as mlines
 
 from simple_biped.utils.logger import RaiLogger
 from simple_biped.utils.utils_thomas import compute_stats
@@ -330,9 +331,11 @@ def plot_performance(name, res_list, conf_list, marker_list, xlabel, ylabel,
     prop_cycle = plt.rcParams['axes.prop_cycle']
     colors = prop_cycle.by_key()['color']
     points = []
+    handles = []
     for (conf, res, mark) in zip(conf_list, res_list, marker_list):
         w_u_list   = conf.w_d4x_list
         label_done = False
+        handles += [mlines.Line2D([], [], linestyle=' ', color='k', marker=mark, markersize=30, label=conf.ctrl_long_name)]
         for (i, (w_u, color)) in enumerate(zip(w_u_list, colors)):
             tmp = res.get_matching(conf.keys, [None, None, None, w_u]).next()
             p = Empty()
@@ -398,12 +401,26 @@ def plot_performance(name, res_list, conf_list, marker_list, xlabel, ylabel,
         for i in range(3,0,-1): print i,; time_pkg.sleep(1); 
         print ''
         
+        videopath = p.conf.DATA_DIR + p.conf.TESTS_DIR_NAME + 'videos/'
+        if(not os.path.exists(videopath)): os.makedirs(videopath);
+        videoname = videopath + p.conf.controllers[0] + '_x_%.1f_u_%.1f_wu_%.1f'%(
+                    np.log10(p.x), np.log10(p.y), np.log10(p.w_u))
+        robot.viewer.startCapture(robot.hrpfull.windowID, videopath+'capture', 'jpeg')
+        
         t0 = time_pkg.time()
-        for i in range(q.shape[1]):
-            if not i % conf.fdisplay:
-                while((time_pkg.time()-t0)<(i*dt)):
-                    time_pkg.sleep(0.01*dt) # 1% jitter
-                robot.display(q[:,i])
+        for i in range(0, q.shape[1], conf.fdisplay):
+            t = time_pkg.time()-t0
+            if(t < i*dt): time_pkg.sleep(i*dt - t)
+            robot.display(q[:,i])
+#            robot.viewer.captureFrame(robot.hrpfull.windowID, videopath+'capture_0_%d.jpeg')
+                
+        robot.viewer.stopCapture(robot.hrpfull.windowID)
+        avconv_cmd = 'avconv -r 25 -i %scapture_0_%%d.jpeg '%videopath +'%s.mp4'%videoname
+#         '-vf crop=1908:1000:0:0 -r 25 -pix_fmt yuv420p -c:v libx264 ' + \
+         
+        os.system(avconv_cmd)
+        os.system('rm %s*.jpeg'%videopath)
+        
             
     if(conf.useViewer):
         keys_sorted = suboptimal_points.keys()
@@ -460,7 +477,7 @@ def plot_performance(name, res_list, conf_list, marker_list, xlabel, ylabel,
         plt.plot(p.x, p.y, ' '+p.mark, color='r', markersize=30, alpha = 0.75, label=p.lbl)
     for p in suboptimal_points.itervalues():
         plt.plot(p.x, p.y, ' '+p.mark, color='b', markersize=30, alpha = 0.75, label=p.lbl)
-    plt.legend();           plt.grid(True);
+    plt.legend(handles=handles);           plt.grid(True);
     plt.xlabel(xlabel);     plt.ylabel(ylabel)
     plt.xscale('log');      plt.yscale('log')
     plt.xlim(x_min, x_max); plt.ylim(y_min, 1.3*y_max)
