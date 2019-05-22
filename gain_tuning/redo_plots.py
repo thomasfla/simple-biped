@@ -25,14 +25,14 @@ import simple_biped.gain_tuning.conf_tsid_flex_k as conf_tsid_flex_k
 import simple_biped.gain_tuning.conf_tsid_rigid as conf_tsid_rigid
 
 REDO_ANALYSIS = 0
-TESTS_DIR_NAMES = ['push_recovery_slip',
-                   'push_recovery_ekf_slip',
-                   'push_recovery_ekf_slip_coulomb',
-                   'push_recovery_ekf_slip_coulomb_bw',
-                   'push_recovery_ekf_slip_bw',
-                   'push_recovery_slip_bw']
-
-#TESTS_DIR_NAMES = ['push_recovery_ekf_slip'] #, 'push_recovery_ekf_slip']
+TESTS_DIR_NAMES = ['k_0.01/push_recovery_slip',
+                   'k_0.01/push_recovery_slip_bw_ekf',
+                   'k_0.01/push_recovery_slip_bw_ekf_coulomb',
+                   'k_0.1/push_recovery_slip',
+                   'k_0.1/push_recovery_slip_bw_ekf_coulomb',
+                   'k_1/push_recovery_slip',
+                   'k_1/push_recovery_slip_bw_ekf_coulomb']
+TESTS_DIR_NAMES = ['k_0.01/push_recovery_slip']
     
 conf_list = [conf_tsid_rigid, conf_adm_ctrl, conf_tsid_adm, conf_tsid_flex_k]
 marker_list = ['s', 'o', '*', 'v']
@@ -53,6 +53,6 @@ for (i,name) in enumerate(TESTS_DIR_NAMES):
     plt.close('all')
     
     index = i
-    copyfile(DATA_DIR+name+'/roc_performance_comparison.png', DATA_DIR+'%2d'%(index)+'_'+name+'.png')
-    copyfile(DATA_DIR+name+'/roc_performance_comparison_jerk.png', DATA_DIR+'jerk_%2d'%(index)+'_'+name+'.png')
-    copyfile(DATA_DIR+name+'/roc_performance_comparison_jerk_max.png', DATA_DIR+'max_jerk_%2d'%(index)+'_'+name+'.png')
+#    copyfile(DATA_DIR+name+'/roc_performance_comparison.png', DATA_DIR+'%2d'%(index)+'_'+name+'.png')
+#    copyfile(DATA_DIR+name+'/roc_performance_comparison_jerk.png', DATA_DIR+'jerk_%2d'%(index)+'_'+name+'.png')
+#    copyfile(DATA_DIR+name+'/roc_performance_comparison_jerk_max.png', DATA_DIR+'max_jerk_%2d'%(index)+'_'+name+'.png')
