@@ -32,7 +32,7 @@ try:
 except ImportError:
     pass
 
-useViewer = 0
+useViewer = conf.useViewer
 np.set_printoptions(precision=3, linewidth=200)
 
 if useViewer:
@@ -55,7 +55,7 @@ def com_traj(t, c_init, c_final, T):
     return (np.matrix([[py ],[pz]]), np.matrix([[vy ],[vz]]),
             np.matrix([[ay ],[az]]), np.matrix([[jy ],[jz]]), np.matrix([[sy ],[sz]]))
 
-CONTROLLER = 'adm_ctrl'             # either 'tsid_rigid' or 'tsid_flex_k' or 'tsid_adm' or 'tsid_mistry' or 'adm_ctrl'
+CONTROLLER = 'tsid_flex_k'             # either 'tsid_rigid' or 'tsid_flex_k' or 'tsid_adm' or 'tsid_mistry' or 'adm_ctrl'
 F_DISTURB = np.matrix([0e3, 0, 0]).T
 COM_SIN_AMP = np.array([0.0, 0.0])
 ZETA = conf.zetas[0]   # with zeta=0.03 and ndt=100 it is unstable
@@ -76,9 +76,9 @@ PLOT_CONTACT_POINT_ACC              = 0
 PLOT_ANGULAR_MOMENTUM_DERIVATIVES   = 0
 PLOT_JOINT_TORQUES                  = 1
 PLOT_JOINT_ANGLES                   = 0
-plut.SAVE_FIGURES                   = 1
-SAVE_DATA                           = 1
-SHOW_FIGURES                        = 0
+plut.SAVE_FIGURES                   = conf.SAVE_FIGURES
+SAVE_DATA                           = conf.SAVE_DATA
+SHOW_FIGURES                        = conf.do_plots
 
 #Simulation parameters
 dt  = conf.dt_simu
@@ -87,7 +87,7 @@ simulation_time = conf.T_simu
 USE_ESTIMATOR = conf.USE_ESTIMATOR  # use real state for controller feedback
 T_DISTURB_BEGIN = 0.10              # Time at which the disturbance starts
 T_DISTURB_END   = 0.101             # Time at which the disturbance ends
-gain_file = None #'/home/student/repos/simple_biped/gain_tuning/../data/gains/gains_tsid_flex_k_w_d4x=1e-09.npy'
+gain_file = '/home/student/repos/simple_biped/gain_tuning/../data/gains_k_0.01/gains_tsid_flex_k_w_d4x=1e-07.npy'
 test_name = None
 
 INPUT_PARAMS = ['controller=', 'com_sin_amp=', 'f_dist=', 'zeta=', 'use_estimator=', 'T=', 'k=', 'gain_file=', 'test_name=']
@@ -154,8 +154,9 @@ if(SAVE_DATA):
 robot = Hrp2Reduced(urdf,[pkg],loadModel=True,useViewer=useViewer)
 robot.display(robot.q0)
 if useViewer:
-    robot.viewer.setCameraTransform(0,[1.9154722690582275, -0.2266872227191925, 0.1087859719991684,
-                                       0.5243823528289795, 0.518651008605957, 0.4620114266872406, 0.4925136864185333])
+#    robot.viewer.setCameraTransform(0,[1.9154722690582275, -0.2266872227191925, 0.1087859719991684,
+#                                       0.5243823528289795, 0.518651008605957, 0.4620114266872406, 0.4925136864185333])
+    robot.viewer.setCameraTransform(robot.hrpfull.windowID, conf.camera_transform)
 
 if(k>1.0):
     ndt = int(ndt*(1+log(k)))
