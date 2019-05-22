@@ -41,7 +41,7 @@ class Hrp2Reduced:
         '''Typical call with Hrp2Reduced('..../hrp2.udf',['dir/with/mesh/files']).'''
         self.useViewer = useViewer
         self.loadHRP(urdf,pkgs,loadModel)
-        self.buildModel()
+        self.buildModel(loadModel)
         
     def loadHRP(self,urdf,pkgs,loadModel):
         '''Internal: load HRP-2 model from URDF.'''
@@ -50,7 +50,8 @@ class Hrp2Reduced:
         if useViewer:
             robot.initDisplay( loadModel = loadModel)
             if 'viewer' not in robot.__dict__: robot.initDisplay()
-            for n in robot.visual_model.geometryObjects: robot.viewer.gui.setVisibility(robot.getViewerNodeName(n, se3.GeometryType.VISUAL),'OFF')
+            if loadModel:
+                for n in robot.visual_model.geometryObjects: robot.viewer.gui.setVisibility(robot.getViewerNodeName(n, se3.GeometryType.VISUAL),'OFF')
 
         robot.q0 = np.matrix( [
                 0., 0., 0.648702, 0., 0. , 0., 1.,               # Free flyer
@@ -63,7 +64,7 @@ class Hrp2Reduced:
 
         self.hrpfull = robot
 
-    def buildModel(self):
+    def buildModel(self, loadModel):
         '''Internal:build a 3+2+2 DOF model representing a simplified version of HRP-2 legs.'''
         robot = self.hrpfull
         se3.crba(robot.model,robot.data,robot.q0)
@@ -103,7 +104,7 @@ class Hrp2Reduced:
         jointName,bodyName = [name+"_joint",name+"_body"]
         jointId = modelred.addJoint(jointId,JointModel(),placement,jointName)
         modelred.appendBodyToJoint(jointId,inertia,se3.SE3.Identity())
-        if self.useViewer:
+        if self.useViewer and loadModel:
             viewer.addSphere('world/red'+bodyName, 0.05,colorwhite)
         visuals.append( Visual('world/red'+bodyName,jointId,se3.SE3.Identity()) )
 
@@ -118,7 +119,7 @@ class Hrp2Reduced:
         jointName,bodyName = [name+"_joint",name+"_body"]
         jointId = modelred.addJoint(jointId,JointModel(),placement,jointName)
         modelred.appendBodyToJoint(jointId,inertia,se3.SE3.Identity())
-        if self.useViewer:
+        if self.useViewer and loadModel:
             viewer.addSphere('world/red'+bodyName, 0.05,colorred)
         visuals.append( Visual('world/red'+bodyName,jointId,se3.SE3.Identity()) )
 
@@ -134,7 +135,7 @@ class Hrp2Reduced:
         jointId = modelred.addJoint(jointId,JointModel(),placement,jointName)
         modelred.appendBodyToJoint(jointId,inertia,se3.SE3.Identity())
         #viewer.addSphere('world/red'+bodyName, 0.05,colorred)
-        if self.useViewer:
+        if self.useViewer and loadModel:
             viewer.addBox('world/red'+bodyName, 0.05,0.05,0.05,colorred)
         visuals.append( Visual('world/red'+bodyName,jointId,se3.SE3.Identity()) )
 
@@ -145,10 +146,10 @@ class Hrp2Reduced:
         placement.rotation = rotate('y',0)
 
         modelred.addFrame(se3.Frame(name,jointId,0,placement,se3.FrameType.OP_FRAME))
-        if self.useViewer:
+        if self.useViewer and loadModel:
             viewer.addSphere('world/red'+name, 0.05,colorred)
         visuals.append( Visual('world/red'+name,jointId,placement*se3.SE3(eye(3),np.matrix([0,0,.05]).T)) )
-        if self.useViewer:
+        if self.useViewer and loadModel:
             viewer.addBox('world/red'+name+'sole', 0.15,.06,.01,colorred)
         visuals.append( Visual('world/red'+name+'sole',jointId,placement) )
 
@@ -163,7 +164,7 @@ class Hrp2Reduced:
         jointName,bodyName = [name+"_joint",name+"_body"]
         jointId = modelred.addJoint(1,JointModel(),placement,jointName)
         modelred.appendBodyToJoint(jointId,inertia,se3.SE3.Identity())
-        if self.useViewer:
+        if self.useViewer and loadModel:
             viewer.addSphere('world/red'+bodyName, 0.05,colorblue)
         visuals.append( Visual('world/red'+bodyName,jointId,se3.SE3.Identity()) )
 
@@ -179,7 +180,7 @@ class Hrp2Reduced:
         jointId = modelred.addJoint(jointId,JointModel(),placement,jointName)
         modelred.appendBodyToJoint(jointId,inertia,se3.SE3.Identity())
         #viewer.addSphere('world/red'+bodyName, 0.05,colorblue)
-        if self.useViewer:
+        if self.useViewer and loadModel:
             viewer.addBox('world/red'+bodyName, 0.05,0.05,0.05,colorblue)
         visuals.append( Visual('world/red'+bodyName,jointId,se3.SE3.Identity()) )
 
@@ -190,10 +191,10 @@ class Hrp2Reduced:
         placement.rotation = rotate('y',0)
 
         modelred.addFrame(se3.Frame(name,jointId,0,placement,se3.FrameType.OP_FRAME))
-        if self.useViewer:
+        if self.useViewer and loadModel:
             viewer.addSphere('world/red'+name, 0.05,colorblue)
         visuals.append( Visual('world/red'+name,jointId,placement*se3.SE3(eye(3),np.matrix([0,0,.05]).T)) )
-        if self.useViewer:
+        if self.useViewer and loadModel:
             viewer.addBox('world/red'+name+'sole', 0.15,.06,.01,colorblue)
         visuals.append( Visual('world/red'+name+'sole',jointId,placement) )
 
