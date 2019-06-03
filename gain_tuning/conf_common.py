@@ -19,14 +19,16 @@ def get_test_name(ctrl, zeta, f_dist, w_d4x):
 def get_gains_file_name(BASE_NAME, w_d4x):
     return BASE_NAME+'_w_d4x='+str(w_d4x)+'.npy'
     
+k                   = 1       # contact stiffness multiplier
+
 DATA_DIR                = str(os.path.dirname(os.path.abspath(__file__)))+'/../data/'
-TESTS_DIR_NAME          = 'k_0.01/push_recovery_slip_bw_ekf_coulomb/'
-GAINS_DIR_NAME          = 'gains_k_0.01/'
+TESTS_DIR_NAME          = 'k_'+str(k)+'/push_recovery_slip_ekf_coulomb/'
+GAINS_DIR_NAME          = 'gains_k_'+str(k)+'/'
 DATA_FILE_NAME          = 'logger_data.npz'
 OUTPUT_DATA_FILE_NAME   = 'summary_data'
-SAVE_DATA               = 0
+SAVE_DATA               = 1
 LOAD_DATA               = 0
-SAVE_FIGURES            = 0
+SAVE_FIGURES            = 1
 
 TIME_BETWEEN_TESTS  = 10.0
 
@@ -37,18 +39,17 @@ dt_cost_function    = 1e-2  # time step used for cost function of gain tuning
 nc                  = 2     # size of CoM vector
 
 # simulation parameters
-T_simu              = 1.0
+T_simu              = 6.0
 dt_simu             = 1e-3  # time step used by controller
 ndt                 = 10    # number of simulation time steps for each control time step
 mu                  = 0.3
-k                   = 1.0       # contact stiffness multiplier
 Ky                  = k*200000. # 23770
 Kz                  = k*200000.
 K_contact           = np.asmatrix(np.diagflat([Ky,Kz,Ky,Kz]))
 zetas               = [0.3]     # contact damping ratio
-joint_coulomb_friction = 0*0.4*np.array([1.,10.,1.,10.])    # coulomb friction 'right hip', 'right knee', 'left hip', 'left knee'
+joint_coulomb_friction = 1*0.4*np.array([1.,10.,1.,10.])    # coulomb friction 'right hip', 'right knee', 'left hip', 'left knee'
 JOINT_TORQUES_CUT_FREQUENCY = -30.0
-USE_ESTIMATOR       = 0
+USE_ESTIMATOR       = 1
 
 # INITIAL ROBOT STATE
 mass                = 47.21657633
@@ -64,9 +65,9 @@ w_d2x       = 0e-3
 w_d3x       = 0e-6
 w_d4x_list  = np.logspace(-6.0, -12.0, num=7)
 
-do_plots    = 1
+do_plots    = 0
 
-useViewer   = 1
+useViewer   = 0
 fdisplay    = 10
 camera_transform = [2.31, 0.04, 0.2, 
                     0.5007092356681824, 0.5193040370941162, 0.4947327971458435, 0.48461633920669556]

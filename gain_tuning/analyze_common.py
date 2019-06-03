@@ -59,7 +59,27 @@ def compute_costs(x, u, dt, P, Q_x, Q_u):
         control_cost += dt*(xup.T * Q_u * xup)[0,0]
     return xu_proj, np.sqrt(state_cost/T), np.sqrt(control_cost/T)
     
-
+def plot_com_state(time, com_real, axis, nc, w_u, fig_name=None):
+    fi, ax = plt.subplots(5, 1, sharex=True);
+    axstr = ['Y', 'Z']
+    i = 0
+    ax[i].plot(time, com_real[axis,:].A1, '-', label='real')
+    ax[i].set_title(r'CoM Pos '+axstr[axis]+', log($w_{u}$)=%.2f'%(np.log10(w_u)))
+    i += 1
+    ax[i].plot(time, com_real[nc+axis,:].A1, '-', label='real')
+    ax[i].set_title('CoM Vel '+axstr[axis])
+    i += 1
+    ax[i].plot(time, com_real[2*nc+axis,:].A1, '-', label='real')
+    ax[i].set_title('Com Acc '+axstr[axis])
+    i += 1
+    ax[i].plot(time, com_real[3*nc+axis,:].A1, '-', label='real')
+    ax[i].set_title('Com Jerk '+axstr[axis])
+    i += 1
+    ax[i].plot(time, com_real[4*nc+axis,:].A1, '-', label='real')
+    ax[i].set_title('Com Snap '+axstr[axis])
+    ax[i].set_xlabel('Time [s]')
+    if(fig_name is not None): plut.saveFigure(fig_name)
+    
 def plot_real_vs_expected_com_state(time, com_real, com_expected, axis, nc, w_u, fig_name=None):
     fi, ax = plt.subplots(5, 1, sharex=True);
     axstr = ['Y', 'Z']
@@ -84,6 +104,7 @@ def plot_real_vs_expected_com_state(time, com_real, com_expected, axis, nc, w_u,
     ax[i].plot(time, com_expected[4*nc+axis,:].A1, label='expected')
     ax[i].plot(time, com_real[4*nc+axis,:].A1, '--', label='real')
     ax[i].set_title('Com Snap '+axstr[axis])
+    ax[i].set_xlabel('Time [s]')
     if(fig_name is not None): plut.saveFigure(fig_name)
     
 
@@ -242,6 +263,8 @@ def analyze_results(conf, compute_system_matrices, P):
                 # plot real CoM trajectory VS expected CoM trajectory
                 fig_name = 'exp_vs_real_com_Y_'+ctrl+'_w_u_%.2f'%(np.log10(w_d4x))
                 plot_real_vs_expected_com_state(time, com_real, xu_proj, 0, nc, w_d4x, fig_name)
+                fig_name = 'com_Y_'+ctrl+'_w_u_%.2f'%(np.log10(w_d4x))
+                plot_com_state(time, com_real, 0, nc, w_d4x, fig_name)
 #                plot_real_vs_expected_com_state(time, com_real, xu_proj, 1, nc, w_d4x)
 #                plt.figure()
 #                plt.plot(time, com_j[0,:].A1)
@@ -275,33 +298,33 @@ def analyze_results(conf, compute_system_matrices, P):
     plt.yscale('log')
     plut.saveFigure('roc_performance')
 
-    plt.figure()    
-    for (w_d4x, color) in zip(keys_sorted, colors):
-        tmp = res.get_matching(keys, [None, None, None, w_d4x]).next()
-        label = r'Expected, log($w_{u}$)=%.2f'%(np.log10(w_d4x))
-        plt.plot(tmp.expected_state_cost, tmp.expected_control_cost_jerk, ' *', color=color, markersize=30, label=label)
-        plt.plot(tmp.cost_state, tmp.cost_control_jerk, ' o', color=color, markersize=30) #, label='real w_d4x='+str(w_d4x))
-    plt.legend()
-    plt.grid(True);
-    plt.xlabel(r'State cost')
-    plt.ylabel(r'Control (jerk) cost')
-    plt.xscale('log')
-    plt.yscale('log')
-    plut.saveFigure('roc_performance_jerk')
-    
-    plt.figure()    
-    for (w_d4x, color) in zip(keys_sorted, colors):
-        tmp = res.get_matching(keys, [None, None, None, w_d4x]).next()
-        label = r'Expected, log($w_{u}$)=%.2f'%(np.log10(w_d4x))
-        plt.plot(tmp.expected_state_cost, tmp.expected_control_cost_jerk, ' *', color=color, markersize=30, label=label)
-        plt.plot(tmp.cost_state, tmp.jerk_max, ' o', color=color, markersize=30) #, label='real w_d4x='+str(w_d4x))
-    plt.legend()
-    plt.grid(True);
-    plt.xlabel(r'State cost')
-    plt.ylabel(r'Control (jerk max) cost')
-    plt.xscale('log')
-    plt.yscale('log')
-    plut.saveFigure('roc_performance_jerk_max')
+#    plt.figure()    
+#    for (w_d4x, color) in zip(keys_sorted, colors):
+#        tmp = res.get_matching(keys, [None, None, None, w_d4x]).next()
+#        label = r'Expected, log($w_{u}$)=%.2f'%(np.log10(w_d4x))
+#        plt.plot(tmp.expected_state_cost, tmp.expected_control_cost_jerk, ' *', color=color, markersize=30, label=label)
+#        plt.plot(tmp.cost_state, tmp.cost_control_jerk, ' o', color=color, markersize=30) #, label='real w_d4x='+str(w_d4x))
+#    plt.legend()
+#    plt.grid(True);
+#    plt.xlabel(r'State cost')
+#    plt.ylabel(r'Control (jerk) cost')
+#    plt.xscale('log')
+#    plt.yscale('log')
+#    plut.saveFigure('roc_performance_jerk')
+#    
+#    plt.figure()    
+#    for (w_d4x, color) in zip(keys_sorted, colors):
+#        tmp = res.get_matching(keys, [None, None, None, w_d4x]).next()
+#        label = r'Expected, log($w_{u}$)=%.2f'%(np.log10(w_d4x))
+#        plt.plot(tmp.expected_state_cost, tmp.expected_control_cost_jerk, ' *', color=color, markersize=30, label=label)
+#        plt.plot(tmp.cost_state, tmp.jerk_max, ' o', color=color, markersize=30) #, label='real w_d4x='+str(w_d4x))
+#    plt.legend()
+#    plt.grid(True);
+#    plt.xlabel(r'State cost')
+#    plt.ylabel(r'Control (jerk max) cost')
+#    plt.xscale('log')
+#    plt.yscale('log')
+#    plut.saveFigure('roc_performance_jerk_max')
     
 #    plt.figure()
 #    for (w_d4x, color) in zip(keys_sorted, colors):
@@ -371,15 +394,16 @@ def plot_performance(name, res_list, conf_list, marker_list, xlabel, ylabel,
                 break
         if p0_optimal: optimal_points[p0.x] = p0
     
-    # plot with colors corresponding to values of w_u
-    plt.figure()
-    for p in points:
-        plt.plot(p.x, p.y, ' '+p.mark, color=p.color, markersize=30, alpha = 0.75, label=p.lbl)
-    plt.legend();           plt.grid(True);
-    plt.xlabel(xlabel);     plt.ylabel(ylabel)
-    plt.xscale('log');      plt.yscale('log')
-    plt.xlim(x_min, x_max); plt.ylim(y_min, 1.3*y_max)
-    plut.saveFigure(name)
+    if(conf_list[0].SAVE_FIGURES):
+        # plot with colors corresponding to values of w_u
+        plt.figure()
+        for p in points:
+            plt.plot(p.x, p.y, ' '+p.mark, color=p.color, markersize=30, alpha = 0.75, label=p.lbl)
+        plt.legend();           plt.grid(True);
+        plt.xlabel(xlabel);     plt.ylabel(ylabel)
+        plt.xscale('log');      plt.yscale('log')
+        plt.xlim(x_min, x_max); plt.ylim(y_min, 1.3*y_max)
+        plut.saveFigure(name)
     
     # plot with colors corresponding to Pareto optimality
     from simple_biped.utils.utils_thomas import restert_viewer_server
@@ -450,47 +474,51 @@ def plot_performance(name, res_list, conf_list, marker_list, xlabel, ylabel,
         nc, dt, N0 = conf.nc, conf.dt_simu, 0
         lgr = RaiLogger()
         lgr.load(INPUT_FILE)
-        com_p = lgr.get_vector('simu_com_p', nc)[:,N0:]
-        com_ref = lgr.get_vector('tsid_comref', nc)[:,N0:]
-        com_err = com_p-com_ref
-        com_j = lgr.get_vector('simu_com_j', nc)[:,N0:]
-        # compute state cost and control cost for real system
-        N = com_p.shape[1]
-        time = np.arange(N*dt, step=dt)
         
-        fi, ax = plt.subplots(2, 1, sharex=True);
-        i = 0
-        ax[i].plot(time, com_err[0,:].A1, '-', label='real')
-        ax[i].set_title(p.conf.ctrl_long_name+', State cost: %.1f'%(np.log10(p.x)))
-        ax[i].set_ylabel(r'CoM pos Y [$m$]')
-        i += 1
-        ax[i].plot(time, com_j[0,:].A1, '-', label='real')
-        ax[i].set_ylabel(r'CoM jerk Y [$m/s^3$]')
-        plut.saveFigure(name+'_pareto_%.2f_%s'%(np.log10(p.x), p.conf.controllers[0]))
-        index += 1
+        if(conf_list[0].SAVE_FIGURES):
+            com_p = lgr.get_vector('simu_com_p', nc)[:,N0:]
+            com_ref = lgr.get_vector('tsid_comref', nc)[:,N0:]
+            com_err = com_p-com_ref
+            com_j = lgr.get_vector('simu_com_j', nc)[:,N0:]
+            # compute state cost and control cost for real system
+            N = com_p.shape[1]
+            time = np.arange(N*dt, step=dt)
+            
+            fi, ax = plt.subplots(2, 1, sharex=True);
+            i = 0
+            ax[i].plot(time, com_err[0,:].A1, '-', label='real')
+            ax[i].set_title(p.conf.ctrl_long_name+', State cost: %.1f'%(np.log10(p.x)))
+            ax[i].set_ylabel(r'CoM pos Y [$m$]')
+            i += 1
+            ax[i].plot(time, com_j[0,:].A1, '-', label='real')
+            ax[i].set_ylabel(r'CoM jerk Y [$m/s^3$]')
+            plut.saveFigure(name+'_pareto_%.2f_%s'%(np.log10(p.x), p.conf.controllers[0]))
+            index += 1
         
         if(conf.useViewer):
             show_video(dt, robot, lgr, p)
         
-    plt.figure()
-    for p in optimal_points.itervalues():
-        plt.plot(p.x, p.y, ' '+p.mark, color='r', markersize=30, alpha = 0.75, label=p.lbl)
-    for p in suboptimal_points.itervalues():
-        plt.plot(p.x, p.y, ' '+p.mark, color='b', markersize=30, alpha = 0.75, label=p.lbl)
-    plt.legend(handles=handles);           plt.grid(True);
-    plt.xlabel(xlabel);     plt.ylabel(ylabel)
-    plt.xscale('log');      plt.yscale('log')
-    plt.xlim(x_min, x_max); plt.ylim(y_min, 1.3*y_max)
-    plut.saveFigure(name+'_pareto')
-    
-    plt.close('all')
+    if(conf_list[0].SAVE_FIGURES):
+        plt.figure()
+        for p in optimal_points.itervalues():
+            plt.plot(p.x, p.y, ' '+p.mark, color='r', markersize=30, alpha = 0.75, label=p.lbl)
+        for p in suboptimal_points.itervalues():
+            plt.plot(p.x, p.y, ' '+p.mark, color='b', markersize=30, alpha = 0.75, label=p.lbl)
+        plt.legend(handles=handles);           plt.grid(True);
+        plt.xlabel(xlabel);     plt.ylabel(ylabel)
+        plt.xscale('log');      plt.yscale('log')
+        plt.xlim(x_min, x_max); plt.ylim(y_min, 1.3*y_max)
+        plut.saveFigure(name+'_pareto')
+        
+        plt.close('all')
 
 def compare_controllers(conf_list, marker_list):   
-    MIN_STATE_COST   = 2e-4
-    MAX_STATE_COST   = 1.0
-    MAX_CONTROL_COST = 1e6
-    MAX_JERK_COST    = 1e3
-    keys                = conf_list[0].keys 
+    MIN_STATE_COST   = 4e-4
+    MAX_STATE_COST   = 0.07
+    MIN_CONTROL_COST = 7.0
+    MAX_CONTROL_COST = 1e5
+#    MAX_JERK_COST    = 1e3
+#    keys                = conf_list[0].keys 
     plut.FIGURE_PATH    = conf_list[0].DATA_DIR + conf_list[0].TESTS_DIR_NAME
     plut.SAVE_FIGURES   = conf_list[0].SAVE_FIGURES
     SHOW_FIGURES        = conf_list[0].do_plots
@@ -508,7 +536,7 @@ def compare_controllers(conf_list, marker_list):
     plot_performance('roc_performance_comparison', res_list, conf_list, marker_list, 
                      'State cost', 'Snap cost',
                      'cost_state', 'cost_control', 
-                     MIN_STATE_COST, 9.0,
+                     MIN_STATE_COST, MIN_CONTROL_COST,
                      MAX_STATE_COST, MAX_CONTROL_COST, 
                      np.nan, MAX_CONTROL_COST)
  
