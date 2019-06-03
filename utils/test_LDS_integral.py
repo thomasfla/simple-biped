@@ -155,9 +155,10 @@ def print_error(x_exact, x_approx):
     
 if __name__=='__main__':
     import time
+    N_TESTS = 1000
     T = 0.001
-    dt = 2e-6
-    n = 6*11
+    dt = 2e-3
+    n = 16*3*2
     n2 = int(n/2)
     stiffness = 1e5
     damping = 1e2
@@ -215,8 +216,9 @@ if __name__=='__main__':
     time_exact = time.time()-start_time
     
     start_time = time.time()
-    int_x_T_noninv  = compute_integral_x_T(A, a, x0, T, invertible_A=False)
-    time_exact_noninv = time.time()-start_time
+    for i in range(N_TESTS): 
+        int_x_T_noninv  = compute_integral_x_T(A, a, x0, T, invertible_A=False)
+    time_exact_noninv = (time.time()-start_time) / N_TESTS
     print("Approximated int x(T) computed in               ", 1e3*time_approx)
     print("Exact int x(T) computed in                      ", 1e3*time_exact)
     print("Exact int x(T) for non-invertible A computed in ", 1e3*time_exact_noninv)
@@ -233,8 +235,9 @@ if __name__=='__main__':
     time_exact = time.time()-start_time
     
     start_time = time.time()
-    int2_x_T_noninv = compute_double_integral_x_T(A, a, x0, T, invertible_A=False)
-    time_exact_noninv = time.time()-start_time
+    for i in range(N_TESTS):
+        int2_x_T_noninv = compute_double_integral_x_T(A, a, x0, T, invertible_A=False)
+    time_exact_noninv = (time.time()-start_time)/N_TESTS
     
     print("Approximated int2 x(T) computed in              ", 1e3*time_approx)
     print("Exact int2 x(T) computed in                     ", 1e3*time_exact)
